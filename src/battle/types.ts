@@ -24,8 +24,9 @@ export interface Stats {
  * - ally-lowest: 체력 비율이 가장 낮은 아군 (치유)
  * - ally-all: 아군 전체 (광역 치유)
  * - self: 자신
+ * - back: 가장 뒤 열에서 무작위, 도발 무시 (암살)
  */
-export type Targeting = 'front' | 'any' | 'lowest' | 'all' | 'ally-lowest' | 'ally-all' | 'self';
+export type Targeting = 'front' | 'any' | 'lowest' | 'all' | 'ally-lowest' | 'ally-all' | 'self' | 'back';
 
 export type Effect =
   | { kind: 'damage' }
@@ -34,8 +35,20 @@ export type Effect =
   | { kind: 'taunt'; turns: number }
   /** 버프: 대상 공격력 +atk (자기 턴 기준 turns번) */
   | { kind: 'buff'; atk: number; turns: number }
+  /** 소환: 같은 편에 몬스터 count마리 (열마다 살아있는 3마리까지) */
+  | { kind: 'summon'; monster: string; count: number }
   /** 아무것도 안 함 (겁에 질림 등) */
   | { kind: 'none' };
+
+/** 상태 이상 (GDD 5.1.1 구간별 전투 규칙) */
+export interface Inflict {
+  /** 독: 매 자기 턴 시작에 최대 체력의 pct 피해 */
+  poison?: { pct: number; turns: number };
+  /** 둔화: 속도 -pct */
+  slow?: { pct: number; turns: number };
+  /** 기절: chance 확률로 turns번 행동 불가 */
+  stun?: { chance: number; turns: number };
+}
 
 /**
  * 전투 중 효과 수치. 특성·종족·진형·역할을 영웅 데이터 쪽에서 합산해 넘깁니다.
@@ -67,6 +80,8 @@ export interface CombatFx {
   vsFamily?: Record<string, number>;
   /** 계열별 받는 피해 가산 (트라우마 +) */
   fromFamily?: Record<string, number>;
+  /** 독 저항 (1 이상이면 면역, 해독제) */
+  poisonResist?: number;
   // ── 무기 특수 능력 (전설 이상) ──
   /** 불굴: 전투당 1번, 쓰러질 피해를 받으면 이 체력 비율로 버팀 */
   lastStand?: number;
@@ -98,6 +113,20 @@ export interface SkillDef {
   healBelow?: { ratio: number; minCount: number };
   /** 화면 흔들림 등 큰 연출 */
   big?: boolean;
+  /** 맞힌 대상에게 상태 이상 */
+  inflict?: Inflict;
+  /** 방어력 무시 비율 */
+  pierce?: number;
+}
+
+/** 보스 단계: 체력이 below 비율 아래로 내려가면 스킬이 바뀜 */
+export interface PhaseDef {
+  below: number;
+  name: string;
+  skills: SkillDef[];
+  basic?: SkillDef;
+  /** 공격력 배율 */
+  atkMult?: number;
 }
 
 export interface UnitInit {
@@ -125,6 +154,10 @@ export interface UnitInit {
   boss?: 'mid' | 'main';
   /** 희귀 몬스터 (황금 변종) */
   rare?: boolean;
+  /** 보스 단계 (체력 높은 쪽부터) */
+  phases?: PhaseDef[];
+  /** 소환된 유닛 */
+  summoned?: boolean;
 }
 
 export interface Unit extends UnitInit {
@@ -145,6 +178,12 @@ export interface Unit extends UnitInit {
   lowestHp: number;
   /** 전투당 1번 쓰는 능력 사용 여부 (불굴, 기적) */
   used: Record<string, boolean>;
+  /** 걸린 상태 이상 */
+  poison: { dmg: number; turns: number; from: string; family?: string } | null;
+  slow: { pct: number; turns: number } | null;
+  stun: number;
+  /** 지나간 보스 단계 수 */
+  phase: number;
 }
 
 export interface Hit {
@@ -162,6 +201,8 @@ export interface Hit {
   missed?: boolean;
   /** 쓰러질 뻔했지만 버팀/일어남 (불굴, 기적) */
   saved?: string;
+  /** 새로 건 상태 이상 ('독', '둔화', '기절') */
+  inflicted?: string[];
 }
 
 export interface ActionResult {
@@ -180,4 +221,12 @@ export interface ActionResult {
   /** 행동 번호 (1부터) */
   turn: number;
   enraged: boolean;
+  /** 턴 시작 독 피해 (행동한 유닛에게) */
+  poisonTick?: Hit;
+  /** 기절해서 행동 못 함 */
+  stunned?: boolean;
+  /** 새로 소환된 유닛 id */
+  summoned?: string[];
+  /** 보스 단계 전환 (이름) */
+  phase?: { unitId: string; name: string };
 }

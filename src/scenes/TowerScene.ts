@@ -1,5 +1,6 @@
 import { scoutRisk, type Risk } from '../battle/scout';
-import { FLOORS, TOP_FLOOR, buildEnemies, themeOf } from '../data/floors';
+import { FLOORS, THEMES, TOP_FLOOR, buildEnemies, summonerFor, themeOf, zoneOf } from '../data/floors';
+import { zoneKnown } from '../progress';
 import { FATIGUE_TOWER, canAfford, fatigueLevel, heroRace, heroToUnit, towerXp } from '../data/heroes';
 import { MONSTERS } from '../data/monsters';
 import { game, living, readyFormation, save } from '../state';
@@ -10,7 +11,8 @@ import { button, chip, panel } from '../ui/widgets';
 import { FAMILIES } from '../data/races';
 
 const LADDER_ROW = 40;
-const PANEL_H = LADDER_ROW * TOP_FLOOR + 18;
+const PANEL_H = LADDER_ROW * 10 + 18;
+const ZONES = Math.ceil(TOP_FLOOR / 10);
 
 /** 탑 화면: 층 선택 / 정찰 / 진형 편성 / 도전. 층을 클리어하면 무조건 이 화면으로 귀환 (GDD 5.2) */
 export class TowerScene extends Page {
@@ -18,6 +20,8 @@ export class TowerScene extends Page {
   private floor = 1;
   private formation = new FormationPanel(this, '탑');
   private riskCache = new Map<string, Risk>();
+  /** 사다리에 보이는 구간 (10층 단위) */
+  private zone = 0;
 
   constructor() {
     super('tower');
@@ -26,6 +30,7 @@ export class TowerScene extends Page {
   protected onEnter(): void {
     this.formation.picking = null;
     this.floor = Math.min(game.data.cleared + 1, TOP_FLOOR);
+    this.zone = zoneOf(this.floor);
   }
 
   protected draw(): void {
@@ -44,28 +49,48 @@ export class TowerScene extends Page {
     this.add.text(W - 28, PAGE_TOP + 58, `출전 가능 영웅 ${ready}명`, textStyle(18, C.faint)).setOrigin(1, 0.5);
   }
 
-  /** 왼쪽: 층 사다리. 클리어한 층 + 다음 층을 고를 수 있음 */
+  /** 왼쪽: 층 사다리 (10층씩). 클리어한 층 + 다음 층을 고를 수 있음 */
   private drawLadder(): void {
+    const d = game.data;
     const x = 28;
-    const top = 118;
-    const rowH = LADDER_ROW;
-    panel(this, x - 10, top - 12, 232, rowH * TOP_FLOOR + 18, C.bgDeep);
-    for (let i = 0; i < TOP_FLOOR; i++) {
-      const floor = TOP_FLOOR - i;
+    const top = 106;
+    panel(this, x - 10, top, 232, PANEL_H, C.bgDeep);
+    // 구간 넘기기
+    const z = this.zone;
+    const zoneName = zoneKnown(d, z) ? (z === ZONES - 1 ? THEMES[z].name : THEMES[z].name) : '???';
+    this.add.text(x + 106, top + 22, `${z * 10 + 1}~${Math.min(TOP_FLOOR, z * 10 + 10)}층`, textStyle(18, C.text)).setOrigin(0.5);
+    this.add.text(x + 106, top + 44, zoneName, textStyle(18, zoneName === '???' ? C.faint : C.goldStr)).setOrigin(0.5);
+    const up = button(this, x + 196, top + 32, 40, 44, '▲', () => {
+      this.zone = Math.min(ZONES - 1, this.zone + 1);
+      this.requestRender();
+    }, { fill: C.panelHi, textColor: C.text, size: 18 });
+    up.setEnabled(z < ZONES - 1 && (d.test || (z + 1) * 10 + 1 <= d.cleared + 1));
+    const down = button(this, x + 16, top + 32, 40, 44, '▼', () => {
+      this.zone = Math.max(0, this.zone - 1);
+      this.requestRender();
+    }, { fill: C.panelHi, textColor: C.text, size: 18 });
+    down.setEnabled(z > 0);
+
+    const rowH = (PANEL_H - 70) / 10;
+    for (let i = 0; i < 10; i++) {
+      const floor = z * 10 + 10 - i;
+      if (floor > TOP_FLOOR) continue;
       const def = FLOORS[floor - 1];
-      const y = top + i * rowH;
-      const open = floor <= game.data.cleared + 1 || game.data.test;
-      const cleared = floor <= game.data.cleared;
+      const y = top + 62 + i * rowH;
+      const open = floor <= d.cleared + 1 || d.test;
+      const cleared = floor <= d.cleared;
       const sel = floor === this.floor;
       const g = this.add.graphics();
-      g.fillStyle(sel ? C.gold : cleared ? 0x253629 : C.panel, 1).fillRoundedRect(x, y, 212, rowH - 6, 8);
+      g.fillStyle(sel ? C.gold : cleared ? 0x253629 : C.panel, 1).fillRoundedRect(x, y, 212, rowH - 4, 8);
       const color = sel ? '#1b1626' : !open ? C.faint : cleared ? C.greenStr : def.title ? C.redStr : C.text;
-      this.add.text(x + 14, y + (rowH - 6) / 2, `${floor}층`, textStyle(22, color)).setOrigin(0, 0.5);
-      const tag = !open ? '잠김' : cleared ? '클리어' : def.title ?? '도전';
-      this.add.text(x + 198, y + (rowH - 6) / 2, tag, textStyle(18, color)).setOrigin(1, 0.5);
+      this.add.text(x + 14, y + (rowH - 4) / 2, `${floor}층`, textStyle(18, color)).setOrigin(0, 0.5);
+      // 보스 층 이름은 그 구간을 알 때만
+      const title = def.title && (cleared || zoneKnown(d, z)) ? def.title : def.title ? '보스' : undefined;
+      const tag = !open ? '잠김' : cleared ? '클리어' : title ?? '도전';
+      this.add.text(x + 198, y + (rowH - 4) / 2, tag, textStyle(18, color)).setOrigin(1, 0.5);
       if (open) {
         this.add
-          .zone(x + 106, y + (rowH - 8) / 2, 212, rowH - 8)
+          .zone(x + 106, y + (rowH - 4) / 2, 212, rowH - 4)
           .setInteractive({ useHandCursor: true })
           .on('pointerup', () => {
             this.floor = floor;
@@ -81,7 +106,7 @@ export class TowerScene extends Page {
     const key = `${this.floor}|${game.data.formationType}|${team.map((t) => `${t.slot}:${t.hero.id}:${t.hero.level}:${t.hero.role}:${t.hero.traits.length}:${t.hero.weapon?.id ?? ''}:${fatigueLevel(t.hero)}`).join(',')}`;
     let r = this.riskCache.get(key);
     if (!r) {
-      r = scoutRisk(team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor })), buildEnemies(this.floor));
+      r = scoutRisk(team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor })), buildEnemies(this.floor), 120, summonerFor(this.floor));
       this.riskCache.set(key, r);
     }
     return r;
@@ -96,7 +121,7 @@ export class TowerScene extends Page {
     panel(this, x, y, w, h);
 
     const def = FLOORS[this.floor - 1];
-    this.add.text(x + 20, y + 14, `정찰 · ${themeOf(this.floor)}`, textStyle(18, C.dim));
+    this.add.text(x + 20, y + 14, `정찰 · ${zoneKnown(game.data, zoneOf(this.floor)) ? themeOf(this.floor) : '??? (알려지지 않은 구간)'}`, textStyle(18, C.dim));
     const ft = this.add.text(x + 20, y + 38, `${this.floor}층${def.title ? ` ${def.title}` : ''}`, textStyle(33, def.title ? C.redStr : C.text));
 
     // 처음 도전하는 층은 정보 없음 (GDD 5.2)

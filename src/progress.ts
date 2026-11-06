@@ -1,6 +1,6 @@
 import type { Unit } from './battle/types';
 import { CHEST_CHANCE, DUNGEONS, DUNGEON_TRAIT_CHANCE, RARE_MULT, rollDrops, towerReward, type DungeonId } from './data/dungeons';
-import { FLOORS } from './data/floors';
+import { FLOORS, THEMES, zoneOf } from './data/floors';
 import { FATIGUE_DUNGEON, FATIGUE_TOWER, addFatigue, addLog, gainXp, injuryDuration, towerXp, type Hero } from './data/heroes';
 import { DUR_DUNGEON, DUR_LOSS, DUR_TOWER, TOWER_WEAPON_LOSS, addMats, weaponName, type Materials } from './data/items';
 import { MONSTERS, type MonsterId } from './data/monsters';
@@ -207,6 +207,14 @@ function wear(hero: Hero, r: HeroReport, n: number): void {
   if (w.dur === 0) r.notes.push({ text: `${weaponName(w)} 내구도 0 · 수리 필요`, tone: 'bad' });
 }
 
+/** 구간(10층 단위)의 테마를 아는지: 그 구간에 도전했거나, 소문을 들었거나, 테스트 모드 */
+export function zoneKnown(d: SaveData, zone: number): boolean {
+  if (zone === 0 || d.test) return true;
+  if (d.cleared >= zone * 10 + 1) return true;
+  if (d.known.some((f) => zoneOf(f) === zone)) return true;
+  return (d.rumors ?? []).includes(zone);
+}
+
 function gainTrait(hero: Hero, r: HeroReport, t: HeroTrait, why: string, now: number): void {
   if (!canAddTrait(hero.traits, t)) return;
   hero.traits.push(t);
@@ -293,6 +301,14 @@ export function applyDungeonResult(
     if (rand() < CHEST_CHANCE) {
       addMats(rewards, rollDrops(dungeon, floor, rand));
       events.push('보물 상자 발견!');
+    }
+    // 던전 보스 첫 처치: 아직 모르는 다음 탑 구간의 소문
+    if (firstClear && floor === 10) {
+      const z = THEMES.findIndex((_, i) => !zoneKnown(d, i));
+      if (z > 0) {
+        d.rumors = [...(d.rumors ?? []), z];
+        events.push(`소문: 탑 ${z * 10 + 1}~${z * 10 + 10}층에는 '${THEMES[z].name}'이(가) 있다`);
+      }
     }
     prog.best = Math.max(prog.best, floor);
     const prev = prog.clearLv[floor];

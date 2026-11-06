@@ -353,7 +353,7 @@ export class TownScene extends Page {
         this.requestRender();
       }, { size: 22 });
       bb.setEnabled(can);
-      if (pid === 'might' || pid === 'guard') {
+      if (pid === 'might' || pid === 'guard' || pid === 'antidote') {
         const on = !!d.elixirs[pid];
         const ub = button(this, x + w - 240, ry + 30, 140, 56, on ? '사용 예약됨' : '다음 전투', () => {
           if (on) {

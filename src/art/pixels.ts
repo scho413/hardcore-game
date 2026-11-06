@@ -582,6 +582,85 @@ export const SPRITES: Record<string, PixelSprite> = {
   },
 };
 
+// ─── 11~50층 몬스터: 기존 그림의 색을 바꾼 변종 + 새 그림 (4-2) ───
+function variant(base: string, palette: Palette, edit?: (rows: string[]) => string[]): PixelSprite {
+  const b = SPRITES[base];
+  return { rows: edit ? edit([...b.rows]) : b.rows, palette: { ...b.palette, ...palette } };
+}
+/** 행 하나를 덮어씀 */
+const put = (rows: string[], y: number, row: string) => rows.map((r, i) => (i === y ? row : r));
+
+Object.assign(SPRITES, {
+  // 오크 전쟁 부대
+  orc_berserker: variant('orc', { G: '#6a8a3a', A: '#8a2a2a', a: '#5a1a1a', E: '#ffdd33' }),
+  orc_hunter: variant('orc', { G: '#5a7a4a', A: '#5a4a2a', a: '#3a2a1a', M: '#a07a46', m: '#7a5636' }),
+  orc_shaman: variant('orc', { G: '#4a6a4a', A: '#6a2a5a', a: '#4a1a3a', M: '#e0503a', m: '#a03a2a', S: '#e8c25a' }),
+  warg: variant('wolfkin', { G: '#4a4040', W: '#7a6a6a', E: '#ff3a2a', C: '#c8c0b0', B: '#2a2020' }),
+  orc_warchief: variant('orc', { G: '#3e6a2e', A: '#a03a2a', a: '#6a2a1a', M: '#e8c25a', m: '#b08a3a', E: '#ffdd33' }),
+  orc_warlord: variant('orc', { G: '#2e5a26', g: '#1e3a16', A: '#3a3a4a', a: '#22222e', M: '#e8c25a', m: '#b08a3a', E: '#ff2a2a', S: '#ffffff' }),
+  // 거미 둥지
+  giant_spider: variant('spider', { P: '#4a3a2a', R: '#9adf5a', Y: '#6a8a3a' }),
+  web_weaver: variant('spider', { P: '#8a8a9a', R: '#4a9aff', F: '#ffffff', Y: '#d8d8e8' }),
+  broodmother: variant('spider', { P: '#2a3a2a', R: '#ff4444', Y: '#9adf5a', F: '#f0e8a0' }),
+  spider_queen: variant('spider', { P: '#3a2a4a', R: '#e8c25a', Y: '#b07af0', F: '#ffffff' }, (r) => put(put(r, 0, '...k.kYk.kYk.k..'), 1, '...kkYYkkYYkk...')),
+  egg_sac: {
+    palette: { k: K, W: '#e8e0c8', w: '#c8bca0', V: '#9adf5a', S: '#d8d8e8' },
+    rows: [
+      '.......S........',
+      '......S.S.......',
+      '.....kkkkk......',
+      '....kWWWWWk.....',
+      '...kWWwWWWWk....',
+      '..kWWWWWwWWWk...',
+      '..kWwWWVWWWWk...',
+      '.kWWWWWWWWwWWk..',
+      '.kWWVWWWWWWWWk..',
+      '.kWWWWWwWWVWWk..',
+      '.kWwWWWWWWWWWk..',
+      '..kWWWWVWWWwk...',
+      '..kWWwWWWWWWk...',
+      '...kWWWWWwWk....',
+      '....kkkkkkk.....',
+      '..S.S.....S.S...',
+    ],
+  },
+  spiderling: {
+    palette: { k: K, P: '#5a4a3a', R: '#9adf5a', F: '#e8e8d0' },
+    rows: [
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '................',
+      '...k........k...',
+      '....k.kkkk.k....',
+      '.....kPPPPk.....',
+      '..kkkPRPPRPkkk..',
+      '.k..kPPPPPPk..k.',
+      '...k.kPFFPk.k...',
+      '..k...kPPk...k..',
+      '.......kk.......',
+      '................',
+      '................',
+    ],
+  },
+  // 도적 길드
+  crossbowman: variant('bandit', { H: '#5a4a2a', C: '#6a5a3a', M: '#3a3a4a' }),
+  assassin: variant('bandit', { H: '#1a1a24', C: '#2a2a36', M: '#8a1a1a', S: '#c8a080', E: '#ff3a2a' }),
+  battle_mage: variant('bandit', { H: '#4a3a8a', C: '#5a4a9a', M: '#8a6aff', W: '#ffd27a' }),
+  mercenary: variant('bandit', { H: '#8a8a9a', C: '#6a6a7a', M: '#3a4a6a', W: '#e8e8f0' }),
+  guild_lieutenant: variant('bandit', { H: '#2a1a2a', C: '#4a2a3a', M: '#b03a3a', W: '#c8c8d8', E: '#ffdd33' }),
+  guild_master: variant('bandit', { H: '#3a2a1a', C: '#1a1a1a', M: '#e8c25a', W: '#ffd27a', E: '#ff3a2a', B: '#e8c25a' }),
+  // 거인의 산
+  ogre_brute: variant('ogre', { T: '#b08a5a', t: '#7a5a3a', B: '#4a5a3a', b: '#2a3a2a' }),
+  hill_giant: variant('ogre', { T: '#9a9a8a', t: '#6a6a5a', B: '#6a4a2a', b: '#4a2a1a', W: '#5a5a5a', w: '#3a3a3a' }),
+  ogre_shaman: variant('ogre', { T: '#8aa07a', t: '#5a7a4a', B: '#5a2a6a', b: '#3a1a4a', W: '#9adf5a', w: '#6a9a3a' }),
+  two_headed_ogre: variant('ogre', { T: '#c07a5a', t: '#8a4a3a', B: '#3a3a5a', b: '#22223a', E: '#ffdd33' }),
+  // 탑의 주인
+  tower_lord: variant('drake', { R: '#3a2a4a', r: '#22182e', Y: '#e8c25a', O: '#b07af0', E: '#ff3a2a', W: '#ffffff' }),
+});
+
 /** 행 길이가 16이 아니면 잘라내거나 투명으로 채움 */
 export function normalizedRows(sprite: PixelSprite, size = 16): string[] {
   return sprite.rows.map((r) => (r.length >= size ? r.slice(0, size) : r.padEnd(size, '.')));

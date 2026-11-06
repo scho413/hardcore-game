@@ -29,7 +29,7 @@ export const TRAINING_MAX_MS = 8 * 60 * 60 * 1000;
 /** 대장간: 레벨별 최고 제작 난이도 (DIFFICULTIES 인덱스) */
 export const SMITHY_MAX_DIFF = [1, 2, 2, 3, 3, 4, 4, 5, 5, 5];
 /** 연금소: 레벨별 해금 물약 수 */
-export const ALCHEMY_UNLOCK = [1, 1, 2, 2, 3, 3, 4, 4, 4, 4];
+export const ALCHEMY_UNLOCK = [1, 1, 2, 2, 3, 3, 4, 4, 5, 5];
 
 /** 모집소 레벨별 등급 확률 % (일반, 고급, 상급, 전설, 신화, 초월). 레벨 0 = 튜토리얼 전 */
 export const RECRUIT_ODDS: number[][] = [
@@ -84,11 +84,12 @@ export const dungeonGold = (floor: number) => 10 * floor;
 export const dismantleGold = (grade: number, tier: number) => 20 * (grade + 1) * tier;
 
 // ─── 연금소 ───
-export type PotionId = 'stamina' | 'cure' | 'might' | 'guard';
+export type PotionId = 'stamina' | 'cure' | 'might' | 'guard' | 'antidote';
 export const POTIONS: Record<PotionId, { name: string; desc: string; gold: number; mats: Materials }> = {
   stamina: { name: '기력 물약', desc: '영웅 1명 기력 +3 (영웅 상세에서 사용)', gold: 60, mats: { crystal1: 1 } },
   cure: { name: '치료 물약', desc: '중상 영웅 1명 즉시 회복 (영웅 상세에서 사용)', gold: 120, mats: { crystal1: 2, wood1: 1 } },
   might: { name: '힘의 영약', desc: '다음 전투 파티 전원 공격력 +10%', gold: 150, mats: { crystal2: 1, metal1: 1 } },
   guard: { name: '수호의 영약', desc: '다음 전투 파티 전원 방어력 +15%', gold: 150, mats: { crystal2: 1, wood1: 1 } },
+  antidote: { name: '해독제', desc: '다음 전투 파티 전원 독 면역', gold: 120, mats: { wood2: 1, crystal1: 1 } },
 };
-export const POTION_ORDER: PotionId[] = ['stamina', 'cure', 'might', 'guard'];
+export const POTION_ORDER: PotionId[] = ['stamina', 'cure', 'might', 'guard', 'antidote'];
