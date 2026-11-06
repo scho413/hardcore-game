@@ -8,6 +8,7 @@ import { FAMILIES, type Family } from './data/races';
 import { TRAITS, canAddTrait, rollValue, traitName, type HeroTrait } from './data/traits';
 import type { SaveData } from './state';
 import { dungeonGold, towerGold } from './data/base';
+import { TIER_NAME, legacyText, makeLegacy } from './data/legacy';
 
 export interface HeroReport {
   hero: Hero;
@@ -81,6 +82,8 @@ export function applyBattleResult(
 
     if (win) {
       hero.record.wins++;
+      if (firstClear) hero.record.pioneer = (hero.record.pioneer ?? 0) + 1;
+      if (def.title) hero.record.bosses = (hero.record.bosses ?? 0) + 1;
       if (floor > hero.bestCleared) {
         hero.bestCleared = floor;
         log(boss ? `${floor}층 ${kindName(boss)} 처치` : `${floor}층 첫 돌파`, 'good');
@@ -130,6 +133,16 @@ export function applyBattleResult(
         r.notes.push({ text: `${weaponName(hero.weapon)} 소실`, tone: 'bad' });
         d.lostWeapons++;
       }
+      // 유산 (GDD 3.8): 한 만큼 남기고 감
+      hero.legacy = makeLegacy(hero);
+      if (hero.legacy.tier > 0) {
+        r.notes.unshift({ text: `${TIER_NAME[hero.legacy.tier]}을(를) 남김 · 유산 ${hero.legacy.items.length}`, tone: 'good' });
+        log(`기여도 ${hero.legacy.score} · 기지에 ${TIER_NAME[hero.legacy.tier]}이(가) 세워짐`, 'info');
+        for (const it of hero.legacy.items) {
+          log(`유산: ${legacyText(it)}`, 'good');
+          if (it.kind === 'disciple') d.disciples = [...(d.disciples ?? []), { cls: it.cls!, trait: it.trait!, from: hero.name }];
+        }
+      }
     }
 
     // ── 무기 내구도 (GDD 7.4): 탑 -10, 쓰러지거나 패배하면 -10 더. 탑에서 쓰러지면 무기를 잃을 수도 ──
@@ -161,6 +174,7 @@ export function applyBattleResult(
     reports.push(r);
   }
 
+  recordCodex(d, units);
   if (!d.known.includes(floor)) d.known.push(floor);
   if (win) d.cleared = Math.max(d.cleared, floor);
   else d.defeats++;
@@ -205,6 +219,19 @@ function wear(hero: Hero, r: HeroReport, n: number): void {
   if (!w || w.dur <= 0) return;
   w.dur = Math.max(0, w.dur - n);
   if (w.dur === 0) r.notes.push({ text: `${weaponName(w)} 내구도 0 · 수리 필요`, tone: 'bad' });
+}
+
+/** 도감: 만난 몬스터와 쓰러뜨린 수 (소환된 적 포함) */
+function recordCodex(d: SaveData, units: Unit[]): void {
+  const seen = new Set(d.seen ?? []);
+  const kills = { ...(d.monsterKills ?? {}) };
+  for (const u of units) {
+    if (u.side !== 'enemy') continue;
+    seen.add(u.kind);
+    if (u.down) kills[u.kind] = (kills[u.kind] ?? 0) + 1;
+  }
+  d.seen = [...seen];
+  d.monsterKills = kills;
 }
 
 /** 구간(10층 단위)의 테마를 아는지: 그 구간에 도전했거나, 소문을 들었거나, 테스트 모드 */
@@ -270,6 +297,7 @@ export function applyDungeonResult(
     addFatigue(hero, FATIGUE_DUNGEON, now);
     if (win) {
       hero.record.wins++;
+      if (floor === 10) hero.record.bosses = (hero.record.bosses ?? 0) + 1;
       // 경험치 없음. 대신 던전마다 정해진 특성을 확률로 얻음
       if (rand() < DUNGEON_TRAIT_CHANCE) {
         const pool = dg.traits;
@@ -292,6 +320,7 @@ export function applyDungeonResult(
     reports.push(r);
   }
 
+  recordCodex(d, units);
   const events: string[] = [];
   let rewards: Materials = {};
   if (win) {

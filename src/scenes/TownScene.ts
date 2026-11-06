@@ -18,8 +18,10 @@ import {
 } from '../data/base';
 import { GRADES, MATERIALS, hasMats, spendMats, type MaterialId } from '../data/items';
 import type { Hero } from '../data/heroes';
+import { CodexScene } from './CodexScene';
 import {
   buildSlots,
+  fallen,
   canAffordBuild,
   game,
   living,
@@ -87,6 +89,7 @@ export class TownScene extends Page {
     g.fillTriangle(W / 2 - 44, PAGE_TOP + 14, W / 2 + 44, PAGE_TOP + 14, W / 2, PAGE_TOP - 30);
     for (let i = 0; i < 6; i++) g.fillStyle(0xffd27a, 0.5).fillRect(W / 2 - 4, PAGE_TOP + 30 + i * 30, 8, 10);
     g.fillStyle(0x3a5a34, 1).fillRect(0, top + 120, W, bottom - top - 120);
+    this.drawHill(top);
     g.fillStyle(0x6a5a3a, 1).fillRect(W / 2 - 30, top + 120, 60, bottom - top - 120);
     g.fillStyle(0x5a4a30, 1);
     for (let y = top + 140; y < bottom; y += 40) g.fillRect(W / 2 - 22, y, 44, 6);
@@ -146,6 +149,41 @@ export class TownScene extends Page {
     if (this.open) {
       const id = this.open;
       this.layer(100, () => this.drawPanel(id));
+    }
+  }
+
+  /** 영웅의 언덕 (GDD 3.8): 유산을 남긴 영웅의 비석·기념비·동상. 기여도 높은 순으로 최대 10개 */
+  private drawHill(top: number): void {
+    const g = this.add.graphics();
+    const hy = top + 120;
+    g.fillStyle(0x2e4a2c, 1).fillEllipse(150, hy + 6, 340, 90).fillEllipse(570, hy + 6, 340, 90);
+    const stones = fallen()
+      .filter((h) => (h.legacy?.tier ?? 0) > 0)
+      .sort((a, b) => b.legacy!.score - a.legacy!.score)
+      .slice(0, 10);
+    const xs = [70, 650, 130, 590, 190, 530, 250, 470, 30, 690];
+    stones.forEach((h, i) => {
+      const x = xs[i];
+      const base = hy - 14 + (i % 2 ? 4 : 0);
+      const tier = h.legacy!.tier;
+      if (tier === 1) {
+        g.fillStyle(0x8a8a9a, 1).fillRoundedRect(x - 7, base - 16, 14, 18, 4);
+        g.fillStyle(0x5a5a6a, 1).fillRect(x - 7, base - 2, 14, 3);
+      } else if (tier === 2) {
+        g.fillStyle(0x6a6a7a, 1).fillRect(x - 10, base - 4, 20, 6);
+        g.fillStyle(0xb8c2d4, 1).fillTriangle(x - 6, base - 4, x + 6, base - 4, x, base - 40);
+      } else {
+        g.fillStyle(0x6a6a7a, 1).fillRect(x - 12, base - 10, 24, 12);
+        g.fillStyle(0xe8c25a, 1).fillRect(x - 5, base - 34, 10, 24).fillCircle(x, base - 40, 6);
+        g.fillStyle(0xe8c25a, 1).fillRect(x + 5, base - 44, 3, 22);
+      }
+    });
+    if (stones.length) {
+      this.add.text(150, hy + 22, `영웅의 언덕 · ${fallen().filter((h) => (h.legacy?.tier ?? 0) > 0).length}`, textStyle(18, C.dim, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
+      this.add.zone(W / 2, hy, W, 60).setInteractive({ useHandCursor: true }).on('pointerup', () => {
+        CodexScene.openFallen();
+        this.go('codex');
+      });
     }
   }
 

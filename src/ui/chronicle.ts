@@ -3,6 +3,7 @@ import { ensureHeroTextures } from '../art/textures';
 import type { Hero } from '../data/heroes';
 import { heroRace } from '../data/heroes';
 import { GRADES, weaponName } from '../data/items';
+import { SCORE, TIER_NAME, contribution, legacyText } from '../data/legacy';
 import { classRole, shade } from './heroUi';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from './theme';
 import { button, panel } from './widgets';
@@ -45,13 +46,29 @@ export function drawChronicle(scene: Phaser.Scene, hero: Hero, page: number, onP
     scene.add.text(x + 196, y + 178, `${dead ? '마지막 무기' : '무기'}: ${weaponName(hero.weapon)}${dead ? ' (소실)' : ''}`, textStyle(18, dead ? C.faint : GRADES[hero.weapon.grade].str));
   }
 
+  // 유산 (죽은 영웅)
+  let top = y + 214;
+  if (dead) {
+    const c = contribution(hero);
+    const lg = hero.legacy;
+    scene.add.text(x + 24, top, `유산 · ${lg && lg.tier ? TIER_NAME[lg.tier] : '남긴 것 없음'}`, textStyle(22, C.goldStr));
+    scene.add.text(x + 24, top + 32, `기여도 ${lg?.score ?? c.score} = 첫 돌파 ${c.pioneer}×${SCORE.pioneer} + 보스 ${c.bosses}×${SCORE.boss} + Lv ${hero.level}×${SCORE.level}`, textStyle(18, C.dim));
+    top += 64;
+    for (const it of lg?.items ?? []) {
+      const t = scene.add.text(x + 24, top, `· ${legacyText(it)}`, textStyle(18, '#9fd0ff', { wordWrap: { width: w - 48 } }));
+      top += t.height + 6;
+    }
+    top += 14;
+  }
+  const perPage = Math.max(4, PER_PAGE - Math.ceil((top - (y + 214)) / 36));
+
   // 사건 목록
-  const pages = Math.max(1, Math.ceil(hero.log.length / PER_PAGE));
+  const pages = Math.max(1, Math.ceil(hero.log.length / perPage));
   page = Math.min(page, pages - 1);
-  const end = hero.log.length - page * PER_PAGE;
-  const items = hero.log.slice(Math.max(0, end - PER_PAGE), end);
-  scene.add.text(x + 24, y + 214, '일대기', textStyle(22, C.goldStr));
-  let ly = y + 252;
+  const end = hero.log.length - page * perPage;
+  const items = hero.log.slice(Math.max(0, end - perPage), end);
+  scene.add.text(x + 24, top, '일대기', textStyle(22, C.goldStr));
+  let ly = top + 38;
   for (const e of items) {
     scene.add.text(x + 24, ly, fmtDate(e.t), textStyle(18, C.faint));
     const t = scene.add.text(x + 160, ly, e.text, textStyle(18, TONE[e.tone], { wordWrap: { width: w - 184 } }));
