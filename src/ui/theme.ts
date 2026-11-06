@@ -16,6 +16,9 @@ export const OY = Math.round((H - BASE_H) / 2);
 /** 화면 맨 위 / 맨 아래의 월드 y */
 export const TOP = -OY;
 export const BOTTOM = BASE_H + OY;
+/** 하단 탭 화면은 위에 붙여서 그림 (남는 높이는 아래쪽 버튼·탭바 사이로) */
+export const PAGE_TOP = 0;
+export const PAGE_BOTTOM = H;
 export const FONT = 'Galmuri11';
 
 export const C = {

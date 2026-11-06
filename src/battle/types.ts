@@ -62,6 +62,10 @@ export interface UnitInit {
   side: Side;
   /** 화면/도감용 키 (직업 id 또는 몬스터 id) */
   kind: string;
+  /** 화면에서 쓸 텍스처 키. 없으면 `unit-<kind>` */
+  texture?: string;
+  /** 특성 id (data/traits.ts). 엔진은 겁쟁이·광전사·강철 피부만 직접 처리 */
+  traits?: string[];
   element: Element;
   row: Row;
   /** 같은 열 안에서의 위치 (0부터) */
@@ -94,6 +98,8 @@ export interface Hit {
   elem: ElemRel;
   /** 이 타격으로 쓰러졌는지 */
   downed: boolean;
+  /** 회피 (겁쟁이 특성) */
+  dodged?: boolean;
 }
 
 export interface ActionResult {

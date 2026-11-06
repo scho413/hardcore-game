@@ -1,30 +1,18 @@
 import Phaser from 'phaser';
-import { SPRITES, normalizedRows } from '../art/pixels';
+import { spriteGrid } from '../art/heroLook';
+import { SPRITES } from '../art/pixels';
+import { makeGridTexture } from '../art/textures';
 
-/** 임시 픽셀 스프라이트를 텍스처(`unit-<kind>`)로 굽습니다. */
+/** 몬스터·기본 직업 스프라이트를 텍스처(`unit-<kind>`)로 굽습니다. 영웅은 각자 `hero-<id>`로 따로 만듦 */
 export class BootScene extends Phaser.Scene {
   constructor() {
     super('boot');
   }
 
   create(): void {
-    for (const [kind, sprite] of Object.entries(SPRITES)) {
-      const rows = normalizedRows(sprite);
-      const tex = this.textures.createCanvas(`unit-${kind}`, 16, 16);
-      if (!tex) continue;
-      const ctx = tex.getContext();
-      rows.forEach((row, y) => {
-        [...row].forEach((ch, x) => {
-          const color = sprite.palette[ch];
-          if (ch === '.' || !color) return;
-          ctx.fillStyle = color;
-          ctx.fillRect(x, y, 1, 1);
-        });
-      });
-      tex.refresh();
-    }
+    for (const kind of Object.keys(SPRITES)) makeGridTexture(this, `unit-${kind}`, spriteGrid(kind));
 
-    // 1×1 흰 픽셀 (파티클·이펙트용)
+    // 흰 픽셀 (파티클·이펙트용)
     const px = this.textures.createCanvas('px', 4, 4);
     if (px) {
       px.getContext().fillStyle = '#ffffff';

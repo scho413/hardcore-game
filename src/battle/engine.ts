@@ -1,3 +1,9 @@
+import {
+  BERSERKER_PER_DOWN,
+  COWARD_DODGE,
+  COWARD_HP_RATIO,
+  IRON_SKIN_TAKEN,
+} from '../data/traits';
 import { Rng } from './rng';
 import type {
   ActionResult,
@@ -206,17 +212,27 @@ export class Battle {
 
   private dealDamage(actor: Unit, target: Unit, skill: SkillDef): Hit {
     const elem = elementRelation(actor.element, target.element);
+    const has = (u: Unit, t: string) => u.traits?.includes(t) ?? false;
+
+    // 겁쟁이: 빈사 상태에서 회피
+    if (has(target, 'coward') && target.hp / target.stats.hp <= COWARD_HP_RATIO && this.rng.next() < COWARD_DODGE) {
+      return { targetId: target.id, amount: 0, heal: false, crit: false, elem, downed: false, dodged: true };
+    }
+    // 광전사: 쓰러진 아군 수만큼 공격력 증가
+    const fallenFriends = this.units.filter((u) => u.side === actor.side && u.down).length;
+    const berserk = has(actor, 'berserker') ? 1 + BERSERKER_PER_DOWN * fallenFriends : 1;
     const elemMult = elem === 'adv' ? ELEM_ADV : elem === 'dis' ? ELEM_DIS : 1;
     const enrageMult = actor.side === 'enemy' && this.enraged ? 1.6 : 1;
 
     // GDD 4.2: 공격력 × 스킬 배율 × 상성 배율 − 방어력 보정
-    const raw = actor.stats.atk * skill.mult * elemMult * enrageMult;
+    const raw = actor.stats.atk * berserk * skill.mult * elemMult * enrageMult;
     const def = target.stats.def * (target.tauntTurns > 0 ? TAUNT_DEF_MULT : 1);
     let dmg = Math.max(raw * MIN_DAMAGE_RATIO, raw - def * DEF_FACTOR);
     dmg *= this.rng.range(0.9, 1.1);
 
     const crit = this.rng.next() < actor.stats.crit;
     if (crit) dmg *= CRIT_MULT;
+    if (has(target, 'ironSkin')) dmg *= IRON_SKIN_TAKEN;
 
     const amount = Math.max(1, Math.round(dmg));
     target.hp = Math.max(0, target.hp - amount);

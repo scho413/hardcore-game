@@ -2,9 +2,12 @@ import Phaser from 'phaser';
 import { Battle, GAUGE_MAX } from '../battle/engine';
 import { randomSeed } from '../battle/rng';
 import type { ActionResult, Hit, Unit } from '../battle/types';
+import { ensureHeroTextures } from '../art/textures';
 import { FLOORS, TOP_FLOOR, buildEnemies } from '../data/floors';
-import { buildAllies } from '../data/party';
-import { game, save } from '../state';
+import { heroToUnit } from '../data/heroes';
+import { applyBattleResult, type HeroReport } from '../progress';
+import { game, readyFormation, save } from '../state';
+import { fmtTime } from '../ui/heroUi';
 import { BASE_H, BOTTOM, C, ELEMENT_INFO, OY, TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 
@@ -47,6 +50,7 @@ export class BattleScene extends Phaser.Scene {
   private logText!: Phaser.GameObjects.Text;
   private running = false;
   private enrageShown = false;
+  private reports: HeroReport[] = [];
 
   constructor() {
     super('battle');
@@ -69,7 +73,20 @@ export class BattleScene extends Phaser.Scene {
     this.events.once('shutdown', () => (this.running = false));
     this.applySpeed();
 
-    this.battle = new Battle(buildAllies(game.data.party), buildEnemies(this.floor), randomSeed());
+    const team = readyFormation();
+    for (const t of team) ensureHeroTextures(this, t.hero);
+    const allies = team.map((t) => heroToUnit(t.hero, t.slot));
+    const enemies = buildEnemies(this.floor);
+    const seed = randomSeed();
+
+    // 결과를 먼저 확정해서 저장 (전투는 시드로 결정되므로 화면과 결과가 같음).
+    // 패배가 보일 때 앱을 꺼서 사망을 피하는 것을 막기 위함.
+    const verdict = new Battle(allies, enemies, seed);
+    const outcome = verdict.runToEnd();
+    this.reports = applyBattleResult(game.data, this.floor, outcome, verdict.units.filter((u) => u.side === 'ally'));
+    save();
+
+    this.battle = new Battle(allies, enemies, seed);
 
     this.drawBackground();
     this.drawHeader();
@@ -236,6 +253,11 @@ export class BattleScene extends Phaser.Scene {
       this.animateHp(v);
       return;
     }
+    if (h.dodged) {
+      this.floatText(v, '회피', '#9fd0ff', 33);
+      this.tweens.add({ targets: v.sprite, x: { from: 18, to: 0 }, duration: 220, ease: 'Quad.easeOut' });
+      return;
+    }
     // 피격 반짝임 + 흔들림
     v.sprite.setTintFill(0xffffff);
     this.time.delayedCall(70, () => {
@@ -365,7 +387,7 @@ export class BattleScene extends Phaser.Scene {
     const barW = u.boss ? 220 : 116;
 
     const shadow = this.add.ellipse(0, size / 2 - 4, size * 0.7, size * 0.16, 0x000000, 0.35);
-    const sprite = this.add.image(0, 0, `unit-${u.kind}`).setScale(scale);
+    const sprite = this.add.image(0, 0, u.texture ?? `unit-${u.kind}`).setScale(scale);
     const nameY = -size / 2 - 18;
     const label = u.side === 'ally' ? `${u.name} Lv${u.level}` : u.name;
     const name = this.add.text(8, nameY, label, textStyle(18, u.boss ? C.redStr : C.text, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
@@ -435,49 +457,58 @@ export class BattleScene extends Phaser.Scene {
 
   private showResult(outcome: 'win' | 'lose'): void {
     this.applySpeedReset();
-    const fallen = this.battle.units.filter((u) => u.side === 'ally' && u.down).length;
-    const d = game.data;
-    let title: string;
-    let lines: string[];
-
-    if (outcome === 'win') {
-      const firstClear = this.floor > d.cleared;
-      if (firstClear) {
-        d.cleared = this.floor;
-        for (const h of d.party) h.level++;
-      }
-      title = this.floor === TOP_FLOOR ? '탑 정복!' : '승리!';
-      lines = [
-        `행동 ${this.battle.turn}회 · 쓰러진 영웅 ${fallen}명`,
-        firstClear ? `파티 레벨 업 → Lv ${d.party[0].level}` : '',
-        fallen > 0 ? '(2단계부터 쓰러진 영웅은 중상)' : '',
-      ];
-    } else {
-      d.defeats++;
-      title = '패배';
-      lines = [`행동 ${this.battle.turn}회 · 파티 전멸`, '(2단계부터 패배 시 쓰러진 영웅은 사망)', '진형을 바꿔서 다시 도전해 보세요'];
-    }
-    save();
+    const deaths = this.reports.filter((r) => r.fate === 'dead').length;
+    const injured = this.reports.filter((r) => r.fate === 'injured').length;
+    const win = outcome === 'win';
+    const title = win ? (this.floor === TOP_FLOOR ? '탑 정복!' : '승리!') : '전멸';
+    const summary = win
+      ? injured > 0 ? `${this.floor}층 클리어 · 중상 ${injured}명` : `${this.floor}층 클리어 · 전원 무사`
+      : deaths > 0 ? `${deaths}명이 돌아오지 못했습니다` : `${this.floor}층 실패`;
 
     const shade = this.add.rectangle(W / 2, BASE_H / 2, W, BOTTOM - TOP, 0x0b0910, 0).setDepth(50).setInteractive();
-    this.tweens.add({ targets: shade, fillAlpha: 0.7, duration: 250 });
-    const box = this.add.container(W / 2, BASE_H / 2).setDepth(51).setAlpha(0);
-    box.add(panel(this, -300, -210, 600, 420, C.panel, outcome === 'win' ? C.gold : C.red));
-    box.add(this.add.text(0, -140, title, textStyle(66, outcome === 'win' ? C.goldStr : C.redStr)).setOrigin(0.5));
-    lines.filter(Boolean).forEach((l, i) => box.add(this.add.text(0, -56 + i * 40, l, textStyle(i === 0 ? 22 : 18, i === 0 ? C.text : C.dim)).setOrigin(0.5)));
+    this.tweens.add({ targets: shade, fillAlpha: win ? 0.7 : 0.85, duration: 300 });
 
-    const toTower = () => this.leave('tower', {});
-    if (outcome === 'win') {
-      box.add(button(this, 0, 130, 440, 88, this.floor === TOP_FLOOR ? '탑으로' : '다음 층 준비', toTower, { size: 33 }));
+    const rowH = 66;
+    const ph = 300 + this.reports.length * rowH;
+    const box = this.add.container(W / 2, BASE_H / 2).setDepth(51).setAlpha(0);
+    box.add(panel(this, -310, -ph / 2, 620, ph, C.panel, win ? C.gold : C.red));
+    box.add(this.add.text(0, -ph / 2 + 64, title, textStyle(66, win ? C.goldStr : C.redStr)).setOrigin(0.5));
+    box.add(this.add.text(0, -ph / 2 + 124, summary, textStyle(22, C.text)).setOrigin(0.5));
+
+    this.reports.forEach((r, i) => {
+      const y = -ph / 2 + 176 + i * rowH;
+      const dead = r.fate === 'dead';
+      const face = this.add.image(-250, y + 22, `face-${r.hero.id}`).setScale(5);
+      if (dead) face.setTint(0x6a6070);
+      box.add(face);
+      box.add(this.add.text(-200, y + 8, r.hero.name, textStyle(22, dead ? C.faint : C.text)));
+      let text: string;
+      let color: string;
+      if (r.fate === 'dead') {
+        text = '사망';
+        color = C.redStr;
+      } else if (r.fate === 'injured') {
+        text = `중상 · ${fmtTime((r.hero.injuredUntil ?? 0) - Date.now())} 후 회복`;
+        color = '#ff9a4a';
+      } else if (r.levelAfter > r.levelBefore) {
+        text = `Lv ${r.levelBefore} → ${r.levelAfter}`;
+        color = C.goldStr;
+      } else {
+        text = win ? `Lv ${r.levelAfter} · 경험치 획득` : '생존';
+        color = C.dim;
+      }
+      if (r.fate === 'injured' && r.levelAfter > r.levelBefore) text = `Lv ${r.levelAfter} · ${text}`;
+      box.add(this.add.text(270, y + 10, text, textStyle(r.fate === 'dead' ? 22 : 18, color)).setOrigin(1, 0));
+    });
+
+    const by = ph / 2 - 62;
+    if (win) {
+      box.add(button(this, 0, by, 440, 84, '귀환', () => this.leave('tower', {}), { size: 33 }));
     } else {
-      box.add(button(this, -110, 130, 200, 88, '탑으로', toTower, { fill: C.panelHi, textColor: C.text, size: 33 }));
-      box.add(button(this, 110, 130, 200, 88, '재도전', () => {
-        d.attempts++;
-        save();
-        this.leave('battle', { floor: this.floor });
-      }, { size: 33 }));
+      box.add(button(this, -125, by, 220, 84, '탑으로', () => this.leave('tower', {}), { fill: C.panelHi, textColor: C.text, size: 22 }));
+      box.add(button(this, 125, by, 220, 84, deaths > 0 ? '추모의 벽' : '영웅 목록', () => this.leave(deaths > 0 ? 'codex' : 'heroes', {}), { size: 22 }));
     }
-    this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 260, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 320, ease: 'Back.easeOut' });
   }
 
   /** 결과 창 연출은 배속과 무관하게 */
