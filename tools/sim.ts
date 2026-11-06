@@ -58,3 +58,18 @@ function run(label: string, party: (floor: number, i: number) => UnitInit[]): vo
 run('최저선 (전원 인간, 특성 없음)', (f) => baseline(levelFor(f), f));
 const rng = new Rng(12345);
 run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), f, rng));
+
+// 3) 던전 (GDD 6): 탑 power층 수준 적. 같은 레벨(=power)에서의 승률
+import { DUNGEONS, DUNGEON_IDS, buildDungeonEnemies } from '../src/data/dungeons';
+console.log(`\n[던전 · 무작위 영웅, 레벨 = 적 수준] 판수 ${N}`);
+for (const id of DUNGEON_IDS) {
+  DUNGEONS[id].levels.forEach((lv, li) => {
+    let wins = 0;
+    const r2 = new Rng(999 + li);
+    for (let i = 0; i < N; i++) {
+      const b = new Battle(randomParty(lv.power, lv.power, r2), buildDungeonEnemies(id, li), i * 104729 + li);
+      if (b.runToEnd() === 'win') wins++;
+    }
+    console.log(`${DUNGEONS[id].name.padEnd(8)} ${lv.name.padEnd(5)} Lv${String(lv.power).padStart(2)}  ${((wins / N) * 100).toFixed(1).padStart(5)}%`);
+  });
+}

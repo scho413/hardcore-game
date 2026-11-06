@@ -1,10 +1,11 @@
 import type { ClassId } from './data/classes';
 import type { FormationId } from './data/formations';
-import { ROSTER_MAX, generateHero, heroLookKey, tickRecovery, type Hero } from './data/heroes';
+import { ROSTER_MAX, canAfford, generateHero, heroLookKey, tickRecovery, type Hero } from './data/heroes';
+import type { Materials, Weapon } from './data/items';
 
-/** 저장 데이터. v5: 성별·종족 기반 외형 */
+/** 저장 데이터. v6: 재료·무기·피로 */
 export interface SaveData {
-  v: 5;
+  v: 6;
   /** 살아있는 영웅 + 죽은 영웅 (status로 구분). 죽은 영웅은 추모의 벽에 표시 */
   heroes: Hero[];
   /** 진형 슬롯 5칸의 영웅 id (빈칸 = null) */
@@ -18,12 +19,32 @@ export interface SaveData {
   attempts: number;
   defeats: number;
   nextId: number;
+  /** 보유 재료 */
+  materials: Materials;
+  /** 장착하지 않은 무기 */
+  stash: Weapon[];
+  /** 영웅이 죽으면서 잃은 무기 수 */
+  lostWeapons: number;
 }
 
-const KEY = 'hardcore-game/save/v5';
+const KEY = 'hardcore-game/save/v6';
 
 function fresh(): SaveData {
-  const d: SaveData = { v: 5, heroes: [], formation: [null, null, null, null, null], formationType: 'basic', cleared: 0, known: [], attempts: 0, defeats: 0, nextId: 1 };
+  const d: SaveData = {
+    v: 6,
+    heroes: [],
+    formation: [null, null, null, null, null],
+    formationType: 'basic',
+    cleared: 0,
+    known: [],
+    attempts: 0,
+    defeats: 0,
+    nextId: 1,
+    // 시작 재료: 바로 대장간을 써볼 수 있게
+    materials: { metal1: 8, wood1: 6, crystal1: 4 },
+    stash: [],
+    lostWeapons: 0,
+  };
   // 시작 로스터: 직업별 1명씩 + 무작위 3명
   const start: (ClassId | undefined)[] = ['knight', 'warrior', 'priest', 'archer', 'mage', undefined, undefined, undefined];
   for (const c of start) recruit(d, c);
@@ -40,7 +61,7 @@ function load(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw) as SaveData;
-      if (d && d.v === 5 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
+      if (d && d.v === 6 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
     }
   } catch {
     // 저장소를 쓸 수 없는 환경 → 메모리에서만 진행
@@ -100,12 +121,19 @@ export function refresh(now = Date.now()): void {
   if (changed) save();
 }
 
-/** 진형에 있고 출전 가능한 영웅 (슬롯 번호 포함) */
-export function readyFormation(d: SaveData = game.data): { hero: Hero; slot: number }[] {
+/**
+ * 진형에 있고 출전 가능한 영웅 (슬롯 번호 포함).
+ * cost: 출전 피로 비용 (탑 3, 던전 2). 피로가 모자라면 빠짐 (GDD 3.2.1)
+ */
+export function readyFormation(cost = 0, d: SaveData = game.data, now = Date.now()): { hero: Hero; slot: number }[] {
   const out: { hero: Hero; slot: number }[] = [];
   d.formation.forEach((id, slot) => {
     const h = heroById(id, d);
-    if (h && h.status === 'ready') out.push({ hero: h, slot });
+    if (h && h.status === 'ready' && canAfford(h, cost, now)) out.push({ hero: h, slot });
   });
   return out;
+}
+
+export function newId(prefix: string, d: SaveData = game.data): string {
+  return `${prefix}${d.nextId++}`;
 }

@@ -2,6 +2,7 @@ import { CLOTHS, lookSignature, randomLook, type Gender, type Look } from '../ar
 import type { CombatFx, Stats, UnitInit } from '../battle/types';
 import { CLASSES, roleOf, statsAtLevel, type ClassId } from './classes';
 import { FORMATIONS, slotPosition, type FormationId } from './formations';
+import { GRADES, weaponStats, type Weapon } from './items';
 import { randomName } from './names';
 import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
 import { rollBirthTraits, traitEffects, type HeroTrait } from './traits';
@@ -42,6 +43,11 @@ export interface Hero {
   /** 누적 기록 */
   record: { battles: number; wins: number; kills: number; killsBy: Partial<Record<Family, number>> };
   log: LogEntry[];
+  /** 장착한 무기 (GDD 7.3: 영웅이 죽으면 함께 소실) */
+  weapon?: Weapon;
+  /** 피로 (GDD 3.2.1): fatigueAt 시점의 값. 실제 값은 fatigueNow()로 */
+  fatigue: number;
+  fatigueAt: number;
   /** 사망 기록 */
   diedFloor?: number;
   diedAt?: number;
@@ -61,6 +67,41 @@ export const ROSTER_MAX = 12;
 /** 일대기 최대 줄 수 */
 export const LOG_MAX = 40;
 
+// ─── 피로 (GDD 3.2.1) ───
+export const FATIGUE_MAX = 6;
+export const FATIGUE_TOWER = 3;
+export const FATIGUE_DUNGEON = 2;
+/** 피로 1당 체력·공격·방어 감소 */
+export const FATIGUE_PENALTY = 0.05;
+/** 피로 1 회복 시간 */
+export const FATIGUE_RECOVER_MS = 5 * 60 * 1000;
+
+/** 지금 피로 (시간 경과 반영, 소수) */
+export function fatigueNow(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
+  return Math.max(0, (h.fatigue ?? 0) - (now - (h.fatigueAt ?? now)) / FATIGUE_RECOVER_MS);
+}
+
+/** 화면·능력치 계산용 피로 (올림 정수) */
+export function fatigueLevel(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
+  return Math.ceil(fatigueNow(h, now) - 1e-9);
+}
+
+export function canAfford(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, cost: number, now = Date.now()): boolean {
+  return fatigueLevel(h, now) + cost <= FATIGUE_MAX;
+}
+
+export function addFatigue(h: Hero, cost: number, now = Date.now()): void {
+  h.fatigue = Math.min(FATIGUE_MAX, fatigueNow(h, now) + cost);
+  h.fatigueAt = now;
+}
+
+/** 다음 피로 1이 회복될 때까지 남은 시간 */
+export function fatigueNextMs(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
+  const f = fatigueNow(h, now);
+  if (f <= 0) return 0;
+  return (f - Math.floor(f - 1e-9)) * FATIGUE_RECOVER_MS;
+}
+
 /** 종족 출현 비율 */
 const RACE_WEIGHTS: [RaceId, number][] = [
   ['human', 0.28],
@@ -71,6 +112,7 @@ const RACE_WEIGHTS: [RaceId, number][] = [
 ];
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassId[];
+const GRADE_FX = GRADES.map((g) => g.color);
 
 export interface GenContext {
   /** 이미 쓰인 이름 */
@@ -129,6 +171,8 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
     bestFloor: 0,
     bestCleared: 0,
     record: { battles: 0, wins: 0, kills: 0, killsBy: {} },
+    fatigue: 0,
+    fatigueAt: now,
     log: [{ t: now, text: '탑의 마을에 도착해 모집에 응함', tone: 'info' }],
     recruitedAt: now,
   };
@@ -157,9 +201,12 @@ export interface HeroContext {
   /** 진형 슬롯 (없으면 위치 효과 없음) */
   slot?: number;
   floor?: number;
+  /** 피로 계산 시각 (없으면 지금). 시뮬레이터는 피로 0 */
+  now?: number;
+  ignoreFatigue?: boolean;
 }
 
-/** 레벨·개체값·종족·특성·역할·진형을 반영한 능력치와 전투 효과 */
+/** 레벨·개체값·종족·특성·역할·진형·무기·피로를 반영한 능력치와 전투 효과 */
 export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: CombatFx } {
   const s = statsAtLevel(CLASSES[h.classId].base, h.level);
   const race = heroRace(h);
@@ -172,15 +219,26 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   const rowEff = row ? fEff[row] ?? {} : {};
   const allEff = fEff.all ?? {};
 
+  const ws = h.weapon ? weaponStats(h.weapon) : null;
+  const wAdd = (k: 'hp' | 'atk' | 'def' | 'spd') => (!ws ? 0 : k === 'atk' ? ws.atk : ws.sub === k ? ws.subValue : 0);
+  const tired = ctx.ignoreFatigue ? 0 : fatigueLevel(h, ctx.now) * FATIGUE_PENALTY;
   const mul = (k: 'hp' | 'atk' | 'def' | 'spd') =>
-    Math.max(0.3, 1 + te.stat[k] + (k === 'atk' ? role.atk ?? 0 : k === 'def' ? role.def ?? 0 : 0) + (k !== 'hp' ? (rowEff[k] ?? 0) + (allEff[k] ?? 0) : 0));
+    Math.max(
+      0.3,
+      1 +
+        te.stat[k] +
+        (k === 'atk' ? role.atk ?? 0 : k === 'def' ? role.def ?? 0 : 0) +
+        (k !== 'hp' ? (rowEff[k] ?? 0) + (allEff[k] ?? 0) : 0) +
+        wAdd(k) -
+        (k !== 'spd' ? tired : 0),
+    );
 
   const stats: Stats = {
     hp: Math.round(s.hp * h.statMul.hp * (m.hp ?? 1) * mul('hp')),
     atk: Math.round(s.atk * h.statMul.atk * (m.atk ?? 1) * mul('atk')),
     def: Math.round(s.def * h.statMul.def * (m.def ?? 1) * mul('def')),
     spd: Math.round(s.spd * h.statMul.spd * (m.spd ?? 1) * mul('spd')),
-    crit: s.crit + (m.crit ?? 0) + te.crit,
+    crit: s.crit + (m.crit ?? 0) + te.crit + (ws?.sub === 'crit' ? ws.subValue : 0),
   };
 
   let fx: CombatFx = { vsFamily: { [race.favored]: FAVORED_BONUS } };
@@ -188,14 +246,16 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   fx = addFx(fx, te.fx);
   fx = addFx(fx, rowEff.fx);
   fx = addFx(fx, allEff.fx);
+  if (ws?.sub === 'healGive') fx = addFx(fx, { healGive: ws.subValue });
   return { stats, fx };
 }
 
+/** 피로를 뺀 기본 능력치 (영웅 상세용) */
 export function heroStats(h: Hero): Stats {
-  return heroCombat(h).stats;
+  return heroCombat(h, { ignoreFatigue: true }).stats;
 }
 
-export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId; floor: number }): UnitInit {
+export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId; floor: number; now?: number; ignoreFatigue?: boolean }): UnitInit {
   const pos = slotPosition(ctx.formation, slot);
   const role = roleOf(h.classId, h.role);
   const { stats, fx } = heroCombat(h, { ...ctx, slot });
@@ -206,7 +266,7 @@ export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId;
     kind: h.classId,
     texture: `hero-${h.id}`,
     fx,
-    fxColor: parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
+    fxColor: h.weapon ? GRADE_FX[h.weapon.grade] : parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
     row: pos.row,
     slot: pos.index,
     stats,

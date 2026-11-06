@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { ensureHeroTextures } from '../art/textures';
 import type { Hero } from '../data/heroes';
 import { heroRace } from '../data/heroes';
+import { GRADES, weaponName } from '../data/items';
 import { classRole, shade } from './heroUi';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from './theme';
 import { button, panel } from './widgets';
@@ -40,14 +41,17 @@ export function drawChronicle(scene: Phaser.Scene, hero: Hero, page: number, onP
   scene.add.text(x + 196, y + 116, status, textStyle(18, dead ? C.redStr : C.greenStr, { wordWrap: { width: w - 220 } }));
   const r = hero.record;
   scene.add.text(x + 196, y + 150, `출전 ${r.battles} · 승리 ${r.wins} · 처치 ${r.kills} · 최고 ${hero.bestCleared}층`, textStyle(18, C.goldStr));
+  if (hero.weapon) {
+    scene.add.text(x + 196, y + 178, `${dead ? '마지막 무기' : '무기'}: ${weaponName(hero.weapon)}${dead ? ' (소실)' : ''}`, textStyle(18, dead ? C.faint : GRADES[hero.weapon.grade].str));
+  }
 
   // 사건 목록
   const pages = Math.max(1, Math.ceil(hero.log.length / PER_PAGE));
   page = Math.min(page, pages - 1);
   const end = hero.log.length - page * PER_PAGE;
   const items = hero.log.slice(Math.max(0, end - PER_PAGE), end);
-  scene.add.text(x + 24, y + 200, '일대기', textStyle(22, C.goldStr));
-  let ly = y + 240;
+  scene.add.text(x + 24, y + 214, '일대기', textStyle(22, C.goldStr));
+  let ly = y + 252;
   for (const e of items) {
     scene.add.text(x + 24, ly, fmtDate(e.t), textStyle(18, C.faint));
     const t = scene.add.text(x + 160, ly, e.text, textStyle(18, TONE[e.tone], { wordWrap: { width: w - 184 } }));

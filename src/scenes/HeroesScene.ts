@@ -5,7 +5,10 @@ import { slotPosition } from '../data/formations';
 import { TRAITS, TRAIT_MAX, traitDesc, traitName } from '../data/traits';
 import { drawChronicle } from '../ui/chronicle';
 import { game, living, recruit, resetProgress, save } from '../state';
-import { TRAIT_COLOR, classRole, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
+import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
+import { weaponIcon } from '../art/itemArt';
+import { GRADES, weaponDesc, weaponName } from '../data/items';
+import { addLog } from '../data/heroes';
 import { Page } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
@@ -21,6 +24,8 @@ export class HeroesScene extends Page {
   private chronPage: number | null = null;
   private resetArmed = false;
   private flash = '';
+  /** 무기 교체창 */
+  private arming = false;
 
   constructor() {
     super('heroes');
@@ -31,6 +36,7 @@ export class HeroesScene extends Page {
     this.chronPage = null;
     this.resetArmed = false;
     this.flash = '';
+    this.arming = false;
   }
 
   protected draw(): void {
@@ -77,6 +83,7 @@ export class HeroesScene extends Page {
         onTap: () => {
           this.detail = h.id;
           this.chronPage = null;
+          this.arming = false;
           this.requestRender();
         },
       });
@@ -87,6 +94,7 @@ export class HeroesScene extends Page {
 
     const d = this.detail ? heroes.find((h) => h.id === this.detail) : undefined;
     if (d) this.layer(100, () => this.drawDetail(d));
+    if (d && this.arming) this.layer(110, () => this.drawArmory(d));
   }
 
   private drawDetail(h: Hero): void {
@@ -118,7 +126,7 @@ export class HeroesScene extends Page {
     this.add.text(tx, y + 160, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
     xpBar(this, tx, y + 186, w - 248 - 24, h);
     const st = statusLine(h);
-    this.add.text(tx, y + 200, st.text, textStyle(18, st.color));
+    this.add.text(tx, y + 200, h.status === 'ready' ? fatigueDetail(h) : st.text, textStyle(18, h.status === 'ready' ? st.color : st.color));
 
     // 능력치 (진형 효과 제외)
     const s = heroStats(h);
@@ -154,8 +162,28 @@ export class HeroesScene extends Page {
     });
     this.add.text(x + 24, ry + 108, roleOf(h.classId, h.role).desc, textStyle(18, C.dim));
 
+    // 무기 (GDD 7)
+    const wy = ry + 150;
+    const wg = this.add.graphics();
+    wg.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 24, wy, w - 48, 64, 8);
+    if (h.weapon) {
+      const wpn = h.weapon;
+      wg.fillStyle(GRADES[wpn.grade].color, 1).fillRect(x + 24, wy, 6, 64);
+      this.add.image(x + 62, wy + 32, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade)).setScale(3.4);
+      this.add.text(x + 98, wy + 8, weaponName(wpn), textStyle(22, GRADES[wpn.grade].str));
+      this.add.text(x + 98, wy + 36, weaponDesc(wpn), textStyle(18, C.dim));
+    } else {
+      this.add.text(x + 44, wy + 32, '무기 없음 · 대장간에서 제작', textStyle(18, C.faint)).setOrigin(0, 0.5);
+    }
+    const spare = game.data.stash.filter((wp) => wp.cls === h.classId).length;
+    const ab = button(this, x + w - 24 - 70, wy + 32, 124, 48, h.weapon ? '교체' : `장착 ${spare}`, () => {
+      this.arming = true;
+      this.requestRender();
+    }, { size: 18 });
+    ab.setEnabled(spare > 0 || !!h.weapon);
+
     // 특성
-    const ty = ry + 156;
+    const ty = wy + 84;
     this.add.text(x + 24, ty, `특성 ${h.traits.length} / ${TRAIT_MAX}`, textStyle(22, C.goldStr));
     const race = heroRace(h);
     const list: [string, string, string][] = [
@@ -176,5 +204,56 @@ export class HeroesScene extends Page {
       this.requestRender();
     }, { fill: C.panelHi, textColor: C.text, size: 22 });
     button(this, x + w / 2 + 130, by, 240, 72, '닫기', close, { size: 22 });
+  }
+
+  /** 무기 교체창: 같은 직업 무기 목록 + 해제 */
+  private drawArmory(h: Hero): void {
+    const close = () => {
+      this.arming = false;
+      this.requestRender();
+    };
+    shade(this, PAGE_TOP, PAGE_BOTTOM - PAGE_TOP, close);
+    const list = game.data.stash.filter((wp) => wp.cls === h.classId).sort((a, b) => b.grade - a.grade || b.tier - a.tier);
+    const x = 40;
+    const w = W - 80;
+    const rowH = 76;
+    const shown = list.slice(0, 9);
+    const ht = 200 + shown.length * rowH + (h.weapon ? 0 : 0);
+    const y = Math.max(PAGE_TOP + 60, (PAGE_BOTTOM - ht) / 2 - 40);
+    panel(this, x, y, w, ht, C.panel, C.gold);
+    this.add.zone(x + w / 2, y + ht / 2, w, ht).setInteractive();
+    this.add.text(x + 24, y + 22, `${h.name}의 무기`, textStyle(33));
+    this.add.text(x + 24, y + 66, `${CLASSES[h.classId].name} 전용 · 보관함 ${list.length}개`, textStyle(18, C.dim));
+    if (shown.length === 0) this.add.text(x + w / 2, y + 120, '보관함에 맞는 무기가 없습니다', textStyle(18, C.faint)).setOrigin(0.5);
+    shown.forEach((wp, i) => {
+      const ry = y + 100 + i * rowH;
+      const g = this.add.graphics();
+      g.fillStyle(C.panelHi, 1).fillRoundedRect(x + 20, ry, w - 40, rowH - 10, 8);
+      g.fillStyle(GRADES[wp.grade].color, 1).fillRect(x + 20, ry, 6, rowH - 10);
+      this.add.image(x + 58, ry + (rowH - 10) / 2, weaponIcon(this, wp.cls, wp.tier, wp.grade)).setScale(3.4);
+      this.add.text(x + 94, ry + 8, weaponName(wp), textStyle(22, GRADES[wp.grade].str));
+      this.add.text(x + 94, ry + 36, weaponDesc(wp), textStyle(18, C.dim));
+      this.add.zone(x + w / 2, ry + (rowH - 10) / 2, w - 40, rowH - 10).setInteractive({ useHandCursor: true }).on('pointerup', () => {
+        const stash = game.data.stash;
+        stash.splice(stash.indexOf(wp), 1);
+        if (h.weapon) stash.push(h.weapon);
+        h.weapon = wp;
+        addLog(h, `${weaponName(wp)} 장착`, 'info');
+        save();
+        close();
+      });
+    });
+    const by = y + ht - 52;
+    if (h.weapon) {
+      button(this, x + w / 2 - 130, by, 230, 64, '해제', () => {
+        game.data.stash.push(h.weapon!);
+        h.weapon = undefined;
+        save();
+        close();
+      }, { fill: C.panelHi, textColor: C.text, size: 22 });
+      button(this, x + w / 2 + 130, by, 230, 64, '닫기', close, { size: 22 });
+    } else {
+      button(this, x + w / 2, by, 300, 64, '닫기', close, { size: 22 });
+    }
   }
 }

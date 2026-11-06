@@ -1,6 +1,8 @@
 import type { Unit } from './battle/types';
+import { DUNGEONS, DUNGEON_XP_RATE, rollDrops, towerReward, type DungeonId } from './data/dungeons';
 import { FLOORS } from './data/floors';
-import { XP_PER_FLOOR, addLog, gainXp, injuryDuration, type Hero } from './data/heroes';
+import { FATIGUE_DUNGEON, FATIGUE_TOWER, XP_PER_FLOOR, addFatigue, addLog, gainXp, injuryDuration, type Hero } from './data/heroes';
+import { addMats, weaponName, type Materials } from './data/items';
 import { MONSTERS, type MonsterId } from './data/monsters';
 import { FAMILIES, type Family } from './data/races';
 import { TRAITS, canAddTrait, rollValue, traitName, type HeroTrait } from './data/traits';
@@ -14,6 +16,12 @@ export interface HeroReport {
   levelAfter: number;
   /** 특성 변화 등 결과 화면에 띄울 문장 */
   notes: { text: string; tone: 'good' | 'bad' }[];
+}
+
+export interface BattleResult {
+  reports: HeroReport[];
+  /** 얻은 재료 */
+  rewards: Materials;
 }
 
 // ─── 전투 중 특성 획득·극복 확률 (GDD 3.5, 초안) ───
@@ -42,8 +50,9 @@ export function applyBattleResult(
   units: Unit[],
   rand: () => number = Math.random,
   now = Date.now(),
-): HeroReport[] {
+): BattleResult {
   const allies = units.filter((u) => u.side === 'ally');
+  const firstClear = outcome === 'win' && floor > d.cleared;
   const enemies = units.filter((u) => u.side === 'enemy');
   const families = new Set(enemies.map((e) => e.family as Family));
   const def = FLOORS[floor - 1];
@@ -60,17 +69,8 @@ export function applyBattleResult(
 
     // 기록
     if (hero.record.battles === 0) log(`${floor}층에서 첫 출전`);
-    hero.record.battles++;
-    const kills = Object.values(u.kills).reduce((a, b) => a + b, 0);
-    hero.record.kills += kills;
-    for (const [f, n] of Object.entries(u.kills)) {
-      const before = hero.record.killsBy[f as Family] ?? 0;
-      hero.record.killsBy[f as Family] = before + n;
-      // 사냥꾼: 같은 계열을 30마리 넘게 잡을 때마다 확률
-      if (Math.floor((before + n) / HUNTER_STEP) > Math.floor(before / HUNTER_STEP) && rand() < P_HUNTER) {
-        gain(hero, r, { id: 'hunter', v: rollValue(rand, 'good'), family: f as Family }, `${FAMILIES[f as Family].name} ${before + n}마리 처치`);
-      }
-    }
+    recordBattle(hero, u, r, rand, now);
+    addFatigue(hero, FATIGUE_TOWER, now);
     hero.bestFloor = Math.max(hero.bestFloor, floor);
 
     if (win) {
@@ -113,6 +113,11 @@ export function applyBattleResult(
       hero.diedBy = u.downedBy ? `${u.downedBy.name}의 ${u.downedBy.skill}` : undefined;
       delete hero.injuredUntil;
       log(`${floor}층에서 ${hero.diedBy ? `${hero.diedBy}에 쓰러져 ` : ''}전사`, 'death');
+      // 무기는 영웅과 운명을 같이함 (GDD 7.3). 기록용으로 hero.weapon은 남겨둠
+      if (hero.weapon) {
+        r.notes.push({ text: `${weaponName(hero.weapon)} 소실`, tone: 'bad' });
+        d.lostWeapons++;
+      }
     }
 
     // ── 트라우마: 내가 쓰러지거나 동료가 쓰러지는 것을 봄 (살아남은 영웅만) ──
@@ -137,19 +142,18 @@ export function applyBattleResult(
   if (win) d.cleared = Math.max(d.cleared, floor);
   else d.defeats++;
 
+  const rewards: Materials = win ? towerReward(floor, firstClear, rand) : {};
+  addMats(d.materials, rewards);
+
   // 죽은 영웅은 진형에서 빠짐. 중상 영웅은 자리는 유지하되 회복 전까지 출전하지 않음
   d.formation = d.formation.map((id) => {
     const h = d.heroes.find((x) => x.id === id);
     return h && h.status !== 'dead' ? id : null;
   });
-  return reports;
+  return { reports, rewards };
 
   function gain(hero: Hero, r: HeroReport, t: HeroTrait, why: string): void {
-    if (!canAddTrait(hero.traits, t)) return;
-    hero.traits.push(t);
-    const tone = TRAITS[t.id].kind === 'bad' ? 'bad' : 'good';
-    r.notes.push({ text: `${traitName(t)} 획득`, tone });
-    addLog(hero, `${why} → ${traitName(t)} 획득`, tone, now);
+    gainTrait(hero, r, t, why, now);
   }
 
   function remove(hero: Hero, r: HeroReport, t: HeroTrait, why: string): void {
@@ -167,4 +171,63 @@ export function applyBattleResult(
     r.notes.push({ text: `${TRAITS[from].name} 극복 → ${TRAITS[to].name}`, tone: 'good' });
     addLog(hero, `${why} → ${TRAITS[from].name}을(를) 극복하고 ${TRAITS[to].name}을(를) 얻음`, 'good', now);
   }
+}
+
+function gainTrait(hero: Hero, r: HeroReport, t: HeroTrait, why: string, now: number): void {
+  if (!canAddTrait(hero.traits, t)) return;
+  hero.traits.push(t);
+  const tone = TRAITS[t.id].kind === 'bad' ? 'bad' : 'good';
+  r.notes.push({ text: `${traitName(t)} 획득`, tone });
+  addLog(hero, `${why} → ${traitName(t)} 획득`, tone, now);
+}
+
+/** 출전·처치 기록과 사냥꾼 특성 (탑·던전 공용) */
+function recordBattle(hero: Hero, u: Unit, r: HeroReport, rand: () => number, now: number): void {
+  hero.record.battles++;
+  const kills = Object.values(u.kills).reduce((a, b) => a + b, 0);
+  hero.record.kills += kills;
+  for (const [f, n] of Object.entries(u.kills)) {
+    const before = hero.record.killsBy[f as Family] ?? 0;
+    hero.record.killsBy[f as Family] = before + n;
+    // 사냥꾼: 같은 계열을 30마리 넘게 잡을 때마다 확률
+    if (Math.floor((before + n) / HUNTER_STEP) > Math.floor(before / HUNTER_STEP) && rand() < P_HUNTER) {
+      gainTrait(hero, r, { id: 'hunter', v: rollValue(rand, 'good'), family: f as Family }, `${FAMILIES[f as Family].name} ${before + n}마리 처치`, now);
+    }
+  }
+}
+
+/**
+ * 던전 결과 (GDD 6): 사망·중상 없음. 승리하면 재료와 경험치(탑의 절반), 패배하면 보상 없음.
+ * 출전한 영웅은 승패와 관계없이 피로 +2
+ */
+export function applyDungeonResult(
+  d: SaveData,
+  dungeon: DungeonId,
+  level: number,
+  outcome: 'win' | 'lose',
+  units: Unit[],
+  rand: () => number = Math.random,
+  now = Date.now(),
+): BattleResult {
+  const lv = DUNGEONS[dungeon].levels[level];
+  const win = outcome === 'win';
+  const reports: HeroReport[] = [];
+  for (const u of units.filter((x) => x.side === 'ally')) {
+    const hero = d.heroes.find((h) => h.id === u.id);
+    if (!hero) continue;
+    const r: HeroReport = { hero, fate: 'ok', levelBefore: hero.level, levelAfter: hero.level, notes: [] };
+    if (hero.record.battles === 0) addLog(hero, `${DUNGEONS[dungeon].name}에서 첫 출전`, 'info', now);
+    recordBattle(hero, u, r, rand, now);
+    addFatigue(hero, FATIGUE_DUNGEON, now);
+    if (win) {
+      hero.record.wins++;
+      gainXp(hero, Math.round(XP_PER_FLOOR * lv.power * DUNGEON_XP_RATE));
+      for (let l = r.levelBefore + 1; l <= hero.level; l++) if (l % 5 === 0) addLog(hero, `레벨 ${l} 달성`, 'good', now);
+    }
+    r.levelAfter = hero.level;
+    reports.push(r);
+  }
+  const rewards: Materials = win ? rollDrops(dungeon, level, rand) : {};
+  addMats(d.materials, rewards);
+  return { reports, rewards };
 }
