@@ -8,17 +8,18 @@ export interface FloorDef {
   enemies: MonsterId[];
 }
 
-// GDD 5.1: 5층 중간보스, 10층 메인보스. 1단계 범위는 10층까지.
+// GDD 5.1 / 5.1.1. 프로토타입 범위는 10층.
+// 11~25층 예정: 뱀족·샌드웜(15층 중간보스)·리치(20층 메인보스) 등
 export const FLOORS: FloorDef[] = [
   { floor: 1, enemies: ['slime', 'goblin', 'slime'] },
-  { floor: 2, enemies: ['goblin', 'goblin', 'slime', 'skeleton'] },
-  { floor: 3, enemies: ['wolf', 'goblin', 'wolf', 'imp'] },
-  { floor: 4, enemies: ['goblin', 'orc', 'goblin', 'imp', 'skeleton'] },
+  { floor: 2, enemies: ['goblin', 'bandit', 'goblin', 'spider'] },
+  { floor: 3, enemies: ['wolfkin', 'hobgoblin', 'wolfkin', 'spider'] },
+  { floor: 4, enemies: ['bandit', 'orc', 'hobgoblin', 'imp', 'skeleton'] },
   { floor: 5, title: '중간보스', enemies: ['goblin', 'ogre', 'goblin'] },
-  { floor: 6, enemies: ['wolf', 'wolf', 'wolf', 'imp', 'imp'] },
-  { floor: 7, enemies: ['orc', 'orc', 'spirit', 'skeleton'] },
-  { floor: 8, enemies: ['wolf', 'orc', 'imp', 'spirit', 'imp'] },
-  { floor: 9, enemies: ['orc', 'wolf', 'goblin', 'imp', 'skeleton'] },
+  { floor: 6, enemies: ['hyena', 'gnoll', 'hyena', 'imp', 'imp'] },
+  { floor: 7, enemies: ['lizardman', 'ghoul', 'lizardman', 'naga', 'skeleton'] },
+  { floor: 8, enemies: ['troll', 'ghoul', 'lizardman', 'succubus'] },
+  { floor: 9, enemies: ['orc', 'goblin', 'bandit', 'succubus', 'skeleton'] },
   { floor: 10, title: '메인보스', enemies: ['drake', 'imp', 'imp'] },
 ];
 
@@ -35,7 +36,8 @@ export function buildEnemies(floor: number): UnitInit[] {
       name: m.name,
       side: 'enemy',
       kind: m.id,
-      element: m.element,
+      family: m.family,
+      fxColor: m.fx,
       row: m.row,
       slot,
       stats: monsterStats(m.base, floor),

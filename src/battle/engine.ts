@@ -1,3 +1,4 @@
+import { DOG_HEAL_MULT, FAVORED_MULT, RABBIT_DODGE, RAGE_ATK, RAGE_HP_RATIO } from '../data/races';
 import {
   BERSERKER_PER_DOWN,
   COWARD_DODGE,
@@ -7,8 +8,6 @@ import {
 import { Rng } from './rng';
 import type {
   ActionResult,
-  ElemRel,
-  Element,
   Hit,
   Side,
   SkillDef,
@@ -23,28 +22,12 @@ export const ENRAGE_TURN = 90;
 /** 이 행동 수를 넘기면 패배 처리 */
 export const TURN_LIMIT = 200;
 
-/** GDD 4.2 상성 배율 */
-export const ELEM_ADV = 1.3;
-export const ELEM_DIS = 0.7;
 export const CRIT_MULT = 1.5;
 /** 방어력 보정: 피해 − 방어력 × DEF_FACTOR, 최소 MIN_DAMAGE_RATIO 보장 */
 export const DEF_FACTOR = 0.5;
 export const MIN_DAMAGE_RATIO = 0.2;
 /** 도발 중 방어력 배율 */
 export const TAUNT_DEF_MULT = 1.5;
-
-const BEATS: Record<Element, Element | null> = {
-  fire: 'wind',
-  wind: 'water',
-  water: 'fire',
-  none: null,
-};
-
-export function elementRelation(attacker: Element, defender: Element): ElemRel {
-  if (BEATS[attacker] === defender) return 'adv';
-  if (BEATS[defender] === attacker) return 'dis';
-  return 'neutral';
-}
 
 const ROW_ORDER = ['front', 'mid', 'back'] as const;
 
@@ -211,21 +194,24 @@ export class Battle {
   }
 
   private dealDamage(actor: Unit, target: Unit, skill: SkillDef): Hit {
-    const elem = elementRelation(actor.element, target.element);
     const has = (u: Unit, t: string) => u.traits?.includes(t) ?? false;
+    const favored = !!target.family && (actor.favored?.includes(target.family) ?? false);
 
-    // 겁쟁이: 빈사 상태에서 회피
-    if (has(target, 'coward') && target.hp / target.stats.hp <= COWARD_HP_RATIO && this.rng.next() < COWARD_DODGE) {
-      return { targetId: target.id, amount: 0, heal: false, crit: false, elem, downed: false, dodged: true };
+    // 회피: 겁쟁이(빈사 상태) / 토끼 수인(항상 10%)
+    const cowardDodge = has(target, 'coward') && target.hp / target.stats.hp <= COWARD_HP_RATIO && this.rng.next() < COWARD_DODGE;
+    if (cowardDodge || (has(target, 'r_dodge') && this.rng.next() < RABBIT_DODGE)) {
+      return { targetId: target.id, amount: 0, heal: false, crit: false, favored, downed: false, dodged: true };
     }
     // 광전사: 쓰러진 아군 수만큼 공격력 증가
     const fallenFriends = this.units.filter((u) => u.side === actor.side && u.down).length;
     const berserk = has(actor, 'berserker') ? 1 + BERSERKER_PER_DOWN * fallenFriends : 1;
-    const elemMult = elem === 'adv' ? ELEM_ADV : elem === 'dis' ? ELEM_DIS : 1;
+    // 바바리안: 빈사 상태에서 공격력 증가
+    const rage = has(actor, 'r_rage') && actor.hp / actor.stats.hp <= RAGE_HP_RATIO ? RAGE_ATK : 1;
+    const favMult = favored ? FAVORED_MULT : 1;
     const enrageMult = actor.side === 'enemy' && this.enraged ? 1.6 : 1;
 
-    // GDD 4.2: 공격력 × 스킬 배율 × 상성 배율 − 방어력 보정
-    const raw = actor.stats.atk * berserk * skill.mult * elemMult * enrageMult;
+    // GDD 4.2: 공격력 × 스킬 배율 × 천적 배율 − 방어력 보정
+    const raw = actor.stats.atk * berserk * rage * skill.mult * favMult * enrageMult;
     const def = target.stats.def * (target.tauntTurns > 0 ? TAUNT_DEF_MULT : 1);
     let dmg = Math.max(raw * MIN_DAMAGE_RATIO, raw - def * DEF_FACTOR);
     dmg *= this.rng.range(0.9, 1.1);
@@ -242,14 +228,15 @@ export class Battle {
       target.gauge = 0;
       target.tauntTurns = 0;
     }
-    return { targetId: target.id, amount, heal: false, crit, elem, downed };
+    return { targetId: target.id, amount, heal: false, crit, favored, downed };
   }
 
   private heal(actor: Unit, target: Unit, skill: SkillDef): Hit {
-    const amount = Math.round(actor.stats.atk * skill.mult * this.rng.range(0.95, 1.05));
+    const boost = target.traits?.includes('r_heal') ? DOG_HEAL_MULT : 1;
+    const amount = Math.round(actor.stats.atk * skill.mult * boost * this.rng.range(0.95, 1.05));
     const before = target.hp;
     target.hp = Math.min(target.stats.hp, target.hp + amount);
-    return { targetId: target.id, amount: target.hp - before, heal: true, crit: false, elem: 'neutral', downed: false };
+    return { targetId: target.id, amount: target.hp - before, heal: true, crit: false, favored: false, downed: false };
   }
 }
 

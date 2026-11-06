@@ -1,12 +1,13 @@
 import { ensureHeroTextures } from '../art/textures';
 import { CLASSES } from '../data/classes';
-import { FORMATION_SLOTS, ROSTER_MAX, heroStats, xpToNext, type Hero } from '../data/heroes';
+import { FORMATION_SLOTS, ROSTER_MAX, heroRace, heroStats, xpToNext, type Hero } from '../data/heroes';
 import { TRAITS } from '../data/traits';
 import { game, living, recruit, resetProgress, save } from '../state';
-import { heroCard, shade, statusLine, xpBar } from '../ui/heroUi';
+import { heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { Page } from '../ui/page';
-import { C, ELEMENT_INFO, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
-import { button, elementChip, panel } from '../ui/widgets';
+import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
+import { button, panel } from '../ui/widgets';
+import { FAMILIES } from '../data/races';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
 
@@ -99,12 +100,12 @@ export class HeroesScene extends Page {
     const cls = CLASSES[h.classId];
     const frame = this.add.graphics();
     frame.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 28, y + 28, 200, 200, 10);
-    this.add.image(x + 128, y + 128, `hero-${h.id}`).setScale(10);
+    this.add.image(x + 128, y + 128, `hero-${h.id}`).setScale(6);
 
     const tx = x + 256;
     this.add.text(tx, y + 34, h.name, textStyle(44));
     const ct = this.add.text(tx, y + 96, `${cls.name} · Lv ${h.level}`, textStyle(22, C.dim));
-    elementChip(this, tx + ct.width + 40, y + 108, h.element, 22);
+    raceChip(this, tx + ct.width + 12, y + 108, h, 22);
     this.add.text(tx, y + 140, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
     xpBar(this, tx, y + 168, w - 256 - 28, h);
     const st = statusLine(h);
@@ -118,7 +119,7 @@ export class HeroesScene extends Page {
       ['방어력', String(s.def)],
       ['속도', String(s.spd)],
       ['치명타', `${Math.round(s.crit * 100)}%`],
-      ['속성', ELEMENT_INFO[h.element].label],
+      ['천적', FAMILIES[heroRace(h).favored].name],
     ];
     const sy = y + 264;
     this.add.text(x + 28, sy, '능력치', textStyle(22, C.goldStr));
@@ -131,12 +132,17 @@ export class HeroesScene extends Page {
 
     const ty = sy + 196;
     this.add.text(x + 28, ty, '특성', textStyle(22, C.goldStr));
-    h.traits.forEach((t, i) => {
-      this.add.text(x + 28, ty + 44 + i * 64, TRAITS[t].name, textStyle(22, '#c9b8e8'));
-      this.add.text(x + 28, ty + 72 + i * 64, TRAITS[t].desc, textStyle(18, C.dim));
+    const race = heroRace(h);
+    const list: [string, string, string][] = [
+      [`${race.perk} (종족)`, `${race.desc} · ${FAMILIES[race.favored].name}에게 피해 +25%`, '#9fe0c0'],
+      ...h.traits.map((t): [string, string, string] => [TRAITS[t].name, TRAITS[t].desc, '#c9b8e8']),
+    ];
+    list.forEach(([name, desc, color], i) => {
+      this.add.text(x + 28, ty + 44 + i * 64, name, textStyle(22, color));
+      this.add.text(x + 28, ty + 72 + i * 64, desc, textStyle(18, C.dim));
     });
 
-    const ry = ty + 200;
+    const ry = ty + 64 * list.length + 60;
     this.add.text(x + 28, ry, '기록', textStyle(22, C.goldStr));
     this.add.text(x + 28, ry + 44, `최고 도달 ${h.bestFloor > 0 ? `${h.bestFloor}층` : '없음'} · 역할: ${cls.role}`, textStyle(18, C.dim));
 

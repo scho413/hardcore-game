@@ -1,6 +1,5 @@
 import Phaser from 'phaser';
-import type { Element } from '../battle/types';
-import { C, ELEMENT_INFO, textStyle } from './theme';
+import { C, textStyle } from './theme';
 
 /** 둥근 사각형 패널 */
 export function panel(scene: Phaser.Scene, x: number, y: number, w: number, h: number, fill = C.panel, stroke = C.line): Phaser.GameObjects.Graphics {
@@ -10,14 +9,14 @@ export function panel(scene: Phaser.Scene, x: number, y: number, w: number, h: n
   return g;
 }
 
-/** 속성 칩 (불/물/바람/무) */
-export function elementChip(scene: Phaser.Scene, x: number, y: number, el: Element, size = 22): Phaser.GameObjects.Container {
-  const info = ELEMENT_INFO[el];
-  const t = scene.add.text(0, 0, info.label, textStyle(size, '#14111c')).setOrigin(0.5);
-  const w = t.width + 16;
+/** 색 칩 (종족, 적 계열 등). x는 왼쪽 끝 기준 */
+export function chip(scene: Phaser.Scene, x: number, y: number, label: string, color: number, size = 18): Phaser.GameObjects.Container {
+  const t = scene.add.text(0, 0, label, textStyle(size, '#14111c')).setOrigin(0, 0.5);
+  const w = t.width + 14;
   const h = size + 10;
+  t.x = 7;
   const g = scene.add.graphics();
-  g.fillStyle(info.color, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 6);
+  g.fillStyle(color, 1).fillRoundedRect(0, -h / 2, w, h, 6);
   return scene.add.container(x, y, [g, t]).setSize(w, h);
 }
 

@@ -1,5 +1,3 @@
-import type { Element } from '../battle/types';
-
 export const W = 720;
 /** 레이아웃 기준 높이. 화면 좌표는 이 기준으로 짜고, 남는 높이는 위아래로 나눠 씁니다. */
 export const BASE_H = 1280;
@@ -40,13 +38,6 @@ export const C = {
   hpEnemy: 0xe0503a,
   hpBack: 0x2a2236,
   gauge: 0x7fb8ff,
-};
-
-export const ELEMENT_INFO: Record<Element, { label: string; color: number; str: string }> = {
-  fire: { label: '불', color: 0xff7a45, str: '#ff8a5a' },
-  water: { label: '물', color: 0x4aa3e0, str: '#6fbaf0' },
-  wind: { label: '바람', color: 0x6fcf6f, str: '#8ee08e' },
-  none: { label: '무', color: 0x9d93b0, str: '#b8b0c8' },
 };
 
 export function textStyle(size: number, color: string = C.text, extra: Phaser.Types.GameObjects.Text.TextStyle = {}): Phaser.Types.GameObjects.Text.TextStyle {

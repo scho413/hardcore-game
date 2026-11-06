@@ -1,13 +1,47 @@
-// 영웅 이름: 음절 조합. 원작 이름은 쓰지 않습니다 (GDD 1 IP 주의).
-const FIRST = ['카', '레', '시', '노', '에', '브', '로', '하', '유', '데', '마', '리', '세', '아', '루', '벨', '도', '키', '라', '제', '미', '소', '오', '타', '피', '헤', '이', '바'];
-const MIDDLE = ['리', '르', '나', '로', '에', '아', '이', '드'];
-const LAST = ['엘', '온', '린', '람', '스', '노', '르', '나', '크', '드', '트', '안', '윈', '렌', '카', '야', '든', '빈', '즈', '샤'];
+// 영웅 이름: 종족별 음절 조합. 원작 이름은 쓰지 않습니다 (GDD 1 IP 주의).
+import type { RaceId } from './races';
 
-export function randomName(rand: () => number, taken: Set<string>): string {
+type Syl = { first: string[]; mid: string[]; last: string[]; threeChance: number };
+
+const SETS: Record<RaceId, Syl> = {
+  human: {
+    first: ['카', '레', '시', '노', '에', '로', '하', '유', '데', '마', '리', '세', '아', '루', '벨', '미', '소', '오', '헤', '이'],
+    mid: ['리', '르', '나', '로', '에', '아'],
+    last: ['온', '린', '스', '나', '안', '렌', '든', '빈', '아', '엘', '노', '카'],
+    threeChance: 0.2,
+  },
+  barbarian: {
+    first: ['그', '라', '쿠', '토', '보', '가', '우', '드', '하', '카', '브', '크'],
+    mid: ['라', '로', '루', '가'],
+    last: ['크', '그', '르', '탄', '록', '쿤', '즈', '가', '쉬', '둔'],
+    threeChance: 0.25,
+  },
+  elf: {
+    first: ['엘', '아', '실', '리', '세', '네', '라', '이', '파', '루', '갈', '셀'],
+    mid: ['라', '리', '에', '나', '로', '윈', '디'],
+    last: ['린', '엘', '아', '스', '엔', '온', '리아', '델', '윈', '니엘'],
+    threeChance: 0.6,
+  },
+  dwarf: {
+    first: ['브', '도', '그', '토', '바', '군', '두', '보', '트', '키', '모', '발'],
+    mid: ['로', '린', '가', '룸'],
+    last: ['린', '단', '롬', '그', '릭', '덴', '굼', '복', '트', '린', '돌'],
+    threeChance: 0.3,
+  },
+  beastfolk: {
+    first: ['토', '모', '코', '뭉', '보', '나', '쿠', '치', '포', '루', '미', '삐'],
+    mid: ['코', '루', '미', '토'],
+    last: ['토', '치', '루', '코', '미', '롱', '냥', '몽', '삐', '둥', '리'],
+    threeChance: 0.15,
+  },
+};
+
+export function randomName(rand: () => number, taken: Set<string>, race: RaceId = 'human'): string {
+  const s = SETS[race];
   const pick = <T,>(a: T[]) => a[Math.floor(rand() * a.length)];
-  for (let i = 0; i < 50; i++) {
-    const n = rand() < 0.25 ? pick(FIRST) + pick(MIDDLE) + pick(LAST) : pick(FIRST) + pick(LAST);
-    if (!taken.has(n)) return n;
+  for (let i = 0; i < 60; i++) {
+    const n = rand() < s.threeChance ? pick(s.first) + pick(s.mid) + pick(s.last) : pick(s.first) + pick(s.last);
+    if (!taken.has(n) && n[0] !== n[1]) return n;
   }
-  return pick(FIRST) + pick(LAST) + Math.floor(rand() * 90 + 10);
+  return pick(s.first) + pick(s.last) + Math.floor(rand() * 90 + 10);
 }

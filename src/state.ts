@@ -1,24 +1,26 @@
 import type { ClassId } from './data/classes';
-import { ROSTER_MAX, generateHero, tickRecovery, type Hero } from './data/heroes';
+import { ROSTER_MAX, generateHero, heroLookKey, tickRecovery, type Hero } from './data/heroes';
 
-/** 저장 데이터. 2단계에서 영웅 로스터·사망 기록이 생기면서 v2 */
+/** 저장 데이터. v3: 종족·새 외형 */
 export interface SaveData {
-  v: 2;
+  v: 3;
   /** 살아있는 영웅 + 죽은 영웅 (status로 구분). 죽은 영웅은 추모의 벽에 표시 */
   heroes: Hero[];
   /** 진형 슬롯 5칸의 영웅 id (빈칸 = null) */
   formation: (string | null)[];
   /** 클리어한 최고 층 */
   cleared: number;
+  /** 한 번이라도 도전한 층 (정찰 정보 공개) */
+  known: number[];
   attempts: number;
   defeats: number;
   nextId: number;
 }
 
-const KEY = 'hardcore-game/save/v2';
+const KEY = 'hardcore-game/save/v3';
 
 function fresh(): SaveData {
-  const d: SaveData = { v: 2, heroes: [], formation: [null, null, null, null, null], cleared: 0, attempts: 0, defeats: 0, nextId: 1 };
+  const d: SaveData = { v: 3, heroes: [], formation: [null, null, null, null, null], cleared: 0, known: [], attempts: 0, defeats: 0, nextId: 1 };
   // 시작 로스터: 직업별 1명씩 + 무작위 3명
   const start: (ClassId | undefined)[] = ['knight', 'warrior', 'priest', 'archer', 'mage', undefined, undefined, undefined];
   for (const c of start) recruit(d, c);
@@ -35,7 +37,7 @@ function load(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw) as SaveData;
-      if (d && d.v === 2 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
+      if (d && d.v === 3 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
     }
   } catch {
     // 저장소를 쓸 수 없는 환경 → 메모리에서만 진행
@@ -71,8 +73,8 @@ export function heroById(id: string | null, d: SaveData = game.data): Hero | und
 /** 새 영웅 모집. 로스터가 가득 차면 null */
 export function recruit(d: SaveData = game.data, classId?: ClassId): Hero | null {
   if (living(d).length >= ROSTER_MAX) return null;
-  const taken = new Set(d.heroes.map((h) => h.name));
-  const h = generateHero(Math.random, `h${d.nextId++}`, taken, { classId });
+  const ctx = { names: new Set(d.heroes.map((h) => h.name)), looks: new Set(d.heroes.map(heroLookKey)) };
+  const h = generateHero(Math.random, `h${d.nextId++}`, ctx, { classId });
   d.heroes.push(h);
   return h;
 }

@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import type { Hero } from '../data/heroes';
-import { FACE_CROP, heroGrid, type Grid } from './heroLook';
+import { FACE_CROP, heroGrid, type Grid } from './heroArt';
 
-function paint(ctx: CanvasRenderingContext2D, grid: Grid, ox = 0, oy = 0, w = 16, h = 16): void {
+function paint(ctx: CanvasRenderingContext2D, grid: Grid, ox = 0, oy = 0, w = grid[0].length, h = grid.length): void {
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const c = grid[oy + y]?.[ox + x];
@@ -15,7 +15,7 @@ function paint(ctx: CanvasRenderingContext2D, grid: Grid, ox = 0, oy = 0, w = 16
 
 export function makeGridTexture(scene: Phaser.Scene, key: string, grid: Grid): void {
   if (scene.textures.exists(key)) return;
-  const tex = scene.textures.createCanvas(key, 16, 16);
+  const tex = scene.textures.createCanvas(key, grid[0].length, grid.length);
   if (!tex) return;
   paint(tex.getContext(), grid);
   tex.refresh();
@@ -28,7 +28,7 @@ export function ensureHeroTextures(scene: Phaser.Scene, hero: Hero): void {
   if (scene.textures.exists(body) && scene.textures.exists(face)) return;
   const grid = heroGrid(hero);
   makeGridTexture(scene, body, grid);
-  const [x, y, w, h] = FACE_CROP[hero.classId];
+  const [x, y, w, h] = FACE_CROP;
   const tex = scene.textures.createCanvas(face, w, h);
   if (!tex) return;
   paint(tex.getContext(), grid, x, y, w, h);

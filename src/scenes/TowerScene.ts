@@ -1,13 +1,14 @@
 import { scoutRisk, type Risk } from '../battle/scout';
 import { ensureHeroTextures } from '../art/textures';
 import { FLOORS, TOP_FLOOR, buildEnemies } from '../data/floors';
-import { FORMATION_SLOTS, heroToUnit } from '../data/heroes';
+import { FORMATION_SLOTS, heroRace, heroToUnit } from '../data/heroes';
 import { MONSTERS } from '../data/monsters';
 import { game, heroById, living, readyFormation, save } from '../state';
 import { heroCard, statusLine } from '../ui/heroUi';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
-import { button, elementChip, panel } from '../ui/widgets';
+import { button, chip, panel } from '../ui/widgets';
+import { FAMILIES } from '../data/races';
 import { shade } from '../ui/heroUi';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
@@ -100,21 +101,34 @@ export class TowerScene extends Page {
     this.add.text(x + 20, y + 16, '정찰', textStyle(18, C.dim));
     this.add.text(x + 20, y + 42, `${this.floor}층${def.title ? ` · ${def.title}` : ''}`, textStyle(33, def.title ? C.redStr : C.text));
 
-    const risk = this.risk();
-    this.add.text(x + 20, y + 94, '위험도', textStyle(22, C.dim));
-    if (risk) this.add.text(x + 116, y + 89, risk.label, textStyle(33, risk.color));
-    else this.add.text(x + 116, y + 96, '출전할 영웅 없음', textStyle(18, C.faint));
+    // 처음 도전하는 층은 정보 없음 (GDD 5.2)
+    const known = this.floor <= game.data.cleared || game.data.known.includes(this.floor);
+    if (!known) {
+      this.add.text(x + 20, y + 94, '위험도', textStyle(22, C.dim));
+      this.add.text(x + 116, y + 89, '???', textStyle(33, C.faint));
+      this.add.text(x + w / 2, y + 220, '?', textStyle(110, '#3d3352')).setOrigin(0.5);
+      this.add
+        .text(x + w / 2, y + 310, '처음 도전하는 층입니다.\n적 구성과 위험도는\n한 번 도전한 뒤에 알 수 있습니다.', textStyle(18, C.dim, { align: 'center', lineSpacing: 8 }))
+        .setOrigin(0.5, 0);
+    } else {
+      const risk = this.risk();
+      this.add.text(x + 20, y + 94, '위험도', textStyle(22, C.dim));
+      if (risk) this.add.text(x + 116, y + 89, risk.label, textStyle(33, risk.color));
+      else this.add.text(x + 116, y + 96, '출전할 영웅 없음', textStyle(18, C.faint));
 
-    const counts = new Map<string, number>();
-    for (const id of def.enemies) counts.set(id, (counts.get(id) ?? 0) + 1);
-    let ey = y + 148;
-    for (const [id, n] of counts) {
-      const m = MONSTERS[id as keyof typeof MONSTERS];
-      this.add.image(x + 48, ey + 28, `unit-${id}`).setScale(m.boss ? 4.2 : 3.4);
-      this.add.text(x + 92, ey + 2, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(22, m.boss ? C.redStr : C.text));
-      elementChip(this, x + 112, ey + 42, m.element, 18);
-      this.add.text(x + 142, ey + 32, m.note, textStyle(18, C.dim, { wordWrap: { width: w - 156 } }));
-      ey += 78;
+      const partyFavored = new Set(readyFormation().map((t) => heroRace(t.hero).favored));
+      const counts = new Map<string, number>();
+      for (const id of def.enemies) counts.set(id, (counts.get(id) ?? 0) + 1);
+      let ey = y + 148;
+      for (const [id, n] of counts) {
+        const m = MONSTERS[id as keyof typeof MONSTERS];
+        this.add.image(x + 48, ey + 28, `unit-${id}`).setScale(m.boss ? 4.2 : 3.4);
+        const nm = this.add.text(x + 92, ey + 2, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(22, m.boss ? C.redStr : C.text));
+        if (partyFavored.has(m.family)) this.add.text(nm.x + nm.width + 8, ey + 6, '천적 있음', textStyle(18, C.greenStr));
+        const fc = chip(this, x + 92, ey + 44, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);
+        this.add.text(x + 92 + fc.width + 8, ey + 34, m.note, textStyle(18, C.dim, { wordWrap: { width: w - 110 - fc.width } }));
+        ey += 78;
+      }
     }
     this.add.text(x + 20, y + h - 18, '자동 전투 · 후퇴 불가 · 클리어 후 귀환', textStyle(18, C.faint)).setOrigin(0, 1);
   }

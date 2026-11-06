@@ -1,16 +1,11 @@
-import type { Element, Row, Stats, UnitInit } from '../battle/types';
+import { CLOTHS, lookSignature, randomLook, type Look } from '../art/heroArt';
+import type { Row, Stats, UnitInit } from '../battle/types';
 import { CLASSES, statsAtLevel, type ClassId } from './classes';
 import { randomName } from './names';
+import { BEAST_KINDS, raceTrait, type BeastKind, type RaceId } from './races';
 import { TRAITS, TRAIT_IDS, type TraitId } from './traits';
 
-/** 외형 = 부위 조합 (GDD 13). 숫자는 art/heroLook.ts의 팔레트/장식 목록 인덱스 */
-export interface Look {
-  skin: number;
-  hair: number;
-  cloth: number;
-  /** 장식 id ('none' 포함). 직업마다 쓸 수 있는 장식이 다름 */
-  acc: string;
-}
+export type { Look };
 
 export type HeroStatus = 'ready' | 'injured' | 'dead';
 
@@ -18,7 +13,9 @@ export interface Hero {
   id: string;
   name: string;
   classId: ClassId;
-  element: Element;
+  race: RaceId;
+  /** 수인 갈래 */
+  beast?: BeastKind;
   level: number;
   xp: number;
   traits: TraitId[];
@@ -46,16 +43,14 @@ export const XP_PER_LEVEL = 100;
 /** 로스터 최대 인원 (이후 숙소 업그레이드로 확장) */
 export const ROSTER_MAX = 12;
 
-export const LOOK_COUNTS = { skin: 4, hair: 6, cloth: 5 };
-
-/** 직업별로 붙을 수 있는 장식 */
-export const ACCESSORIES: Record<ClassId, string[]> = {
-  knight: ['none', 'plume'],
-  warrior: ['none', 'beard', 'eyepatch', 'scar', 'headband'],
-  archer: ['none', 'scar', 'eyepatch'],
-  mage: ['none', 'beard', 'scar'],
-  priest: ['none', 'beard', 'headband'],
-};
+/** 종족 출현 비율 */
+const RACE_WEIGHTS: [RaceId, number][] = [
+  ['human', 0.28],
+  ['elf', 0.18],
+  ['dwarf', 0.18],
+  ['barbarian', 0.14],
+  ['beastfolk', 0.22],
+];
 
 /** 진형 슬롯 5개: 전열 2 / 중열 1 / 후열 2 (GDD 4.1) */
 export const FORMATION_SLOTS: { row: Row; slot: number }[] = [
@@ -68,12 +63,34 @@ export const FORMATION_SLOTS: { row: Row; slot: number }[] = [
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassId[];
 
-export function generateHero(rand: () => number, id: string, taken: Set<string>, opts: { classId?: ClassId; now?: number } = {}): Hero {
+export interface GenContext {
+  /** 이미 쓰인 이름 */
+  names: Set<string>;
+  /** 이미 있는 외형 (산 영웅 + 죽은 영웅). 같은 얼굴은 만들지 않음 */
+  looks: Set<string>;
+}
+
+export function heroLookKey(h: Pick<Hero, 'race' | 'beast' | 'classId' | 'look'>): string {
+  return lookSignature(h.race, h.beast, h.classId, h.look);
+}
+
+export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; now?: number } = {}): Hero {
   const pick = <T,>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
   const classId = opts.classId ?? pick(CLASS_IDS);
 
-  const r = rand();
-  const element: Element = r < 0.4 ? 'none' : r < 0.6 ? 'fire' : r < 0.8 ? 'water' : 'wind';
+  let race = opts.race;
+  if (!race) {
+    let r = rand();
+    race = RACE_WEIGHTS[RACE_WEIGHTS.length - 1][0];
+    for (const [id, w] of RACE_WEIGHTS) {
+      if (r < w) {
+        race = id;
+        break;
+      }
+      r -= w;
+    }
+  }
+  const beast = race === 'beastfolk' ? pick(BEAST_KINDS) : undefined;
 
   const traits: TraitId[] = [];
   const count = rand() < 0.35 ? 2 : 1;
@@ -86,37 +103,46 @@ export function generateHero(rand: () => number, id: string, taken: Set<string>,
 
   const vary = () => Math.round((0.92 + rand() * 0.16) * 100) / 100;
 
+  // 같은 얼굴이 나오면 다시 뽑기 (GDD 3.1: 모든 영웅의 얼굴이 달라야 함)
+  let look = randomLook(rand, race, beast, classId);
+  for (let i = 0; i < 30 && ctx.looks.has(lookSignature(race, beast, classId, look)); i++) look = randomLook(rand, race, beast, classId);
+  ctx.looks.add(lookSignature(race, beast, classId, look));
+
+  const name = randomName(rand, ctx.names, race);
+  ctx.names.add(name);
+
   return {
     id,
-    name: randomName(rand, taken),
+    name,
     classId,
-    element,
+    race,
+    beast,
     level: 1,
     xp: 0,
     traits,
     statMul: { hp: vary(), atk: vary(), def: vary(), spd: vary() },
-    look: {
-      skin: Math.floor(rand() * LOOK_COUNTS.skin),
-      hair: Math.floor(rand() * LOOK_COUNTS.hair),
-      cloth: Math.floor(rand() * LOOK_COUNTS.cloth),
-      acc: rand() < 0.4 ? 'none' : pick(ACCESSORIES[classId]),
-    },
+    look,
     status: 'ready',
     bestFloor: 0,
     recruitedAt: opts.now ?? Date.now(),
   };
 }
 
+export function heroRace(h: Pick<Hero, 'race' | 'beast'>) {
+  return raceTrait(h.race, h.beast);
+}
+
 /** 레벨·개체값·특성을 반영한 최종 능력치 */
 export function heroStats(h: Hero): Stats {
   const s = statsAtLevel(CLASSES[h.classId].base, h.level);
   const has = (t: TraitId) => h.traits.includes(t);
+  const m = heroRace(h).mod;
   return {
-    hp: Math.round(s.hp * h.statMul.hp * (has('sturdy') ? 1.15 : 1)),
-    atk: Math.round(s.atk * h.statMul.atk),
-    def: Math.round(s.def * h.statMul.def),
-    spd: Math.round(s.spd * h.statMul.spd * (has('swift') ? 1.1 : 1) * (has('ironSkin') ? 0.9 : 1)),
-    crit: s.crit + (has('keen') ? 0.1 : 0),
+    hp: Math.round(s.hp * h.statMul.hp * (m.hp ?? 1) * (has('sturdy') ? 1.15 : 1)),
+    atk: Math.round(s.atk * h.statMul.atk * (m.atk ?? 1)),
+    def: Math.round(s.def * h.statMul.def * (m.def ?? 1)),
+    spd: Math.round(s.spd * h.statMul.spd * (m.spd ?? 1) * (has('swift') ? 1.1 : 1) * (has('ironSkin') ? 0.9 : 1)),
+    crit: s.crit + (m.crit ?? 0) + (has('keen') ? 0.1 : 0),
   };
 }
 
@@ -129,14 +155,15 @@ export function heroToUnit(h: Hero, slotIndex: number): UnitInit {
     side: 'ally',
     kind: c.id,
     texture: `hero-${h.id}`,
-    element: h.element,
+    favored: [heroRace(h).favored],
+    fxColor: parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
     row: pos.row,
     slot: pos.slot,
     stats: heroStats(h),
     basic: c.basic,
     skills: c.skills,
     level: h.level,
-    traits: h.traits,
+    traits: [...h.traits, ...(heroRace(h).hooks ?? [])],
   };
 }
 
@@ -144,10 +171,10 @@ export function xpToNext(level: number): number {
   return XP_PER_LEVEL * level;
 }
 
-/** 경험치를 더하고 오른 레벨 수를 돌려줌 */
+/** 경험치를 더하고 오른 레벨 수를 돌려줌 (인간은 +20%) */
 export function gainXp(h: Hero, xp: number): number {
   let ups = 0;
-  h.xp += xp;
+  h.xp += Math.round(xp * (heroRace(h).xp ?? 1));
   while (h.xp >= xpToNext(h.level)) {
     h.xp -= xpToNext(h.level);
     h.level++;

@@ -8,7 +8,8 @@ import { heroToUnit } from '../data/heroes';
 import { applyBattleResult, type HeroReport } from '../progress';
 import { game, readyFormation, save } from '../state';
 import { fmtTime } from '../ui/heroUi';
-import { BASE_H, BOTTOM, C, ELEMENT_INFO, OY, TOP, W, textStyle } from '../ui/theme';
+import { FAMILIES, type Family } from '../data/races';
+import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -32,7 +33,7 @@ const SPEED_KEY = 'hardcore-game/speed';
 
 // 화면 배치: 위쪽 적, 아래쪽 아군 (GDD 4)
 const ENEMY_Y = { back: 300, front: 490 } as const;
-const ALLY_Y = { front: 790, mid: 935, back: 1080 } as const;
+const ALLY_Y = { front: 770, mid: 925, back: 1080 } as const;
 const ALLY_X = { front: [230, 490], mid: [360], back: [230, 490] } as const;
 
 function spread(n: number): number[] {
@@ -190,7 +191,7 @@ export class BattleScene extends Phaser.Scene {
       const sameBefore = r.hits.slice(0, i).filter((x) => x.targetId === h.targetId).length;
       return this.wait(sameBefore * 110).then(async () => {
         if (!this.running) return;
-        await this.projectile(actor, this.views.get(h.targetId)!, r.skill.projectile, actor.unit.element);
+        await this.projectile(actor, this.views.get(h.targetId)!, r.skill.projectile);
         if (r.skill.big && sameBefore === 0) this.cameras.main.shake(120, 0.005);
         this.applyHit(h);
       });
@@ -208,7 +209,8 @@ export class BattleScene extends Phaser.Scene {
 
   // ───────────────────────── 이펙트 ─────────────────────────
 
-  private projectile(from: View, to: View, kind: string, element = from.unit.element): Promise<void> {
+  private projectile(from: View, to: View, kind: string): Promise<void> {
+    const fx = from.unit.fxColor ?? 0xb07aff;
     const sx = from.root.x;
     const sy = from.root.y - from.size * 0.2;
     const ex = to.root.x;
@@ -219,12 +221,12 @@ export class BattleScene extends Phaser.Scene {
     } else if (kind === 'holy') {
       obj = this.add.circle(sx, sy, 10, 0xffe68a).setStrokeStyle(4, 0xfff6d0, 0.6);
     } else {
-      const col = ELEMENT_INFO[element].color;
+      const col = fx;
       obj = this.add.circle(sx, sy, 13, col).setStrokeStyle(5, 0xffffff, 0.5);
     }
     obj.setDepth(20);
     return this.tween({ targets: obj, x: ex, y: ey, duration: kind === 'arrow' ? 160 : 240, ease: kind === 'arrow' ? 'Linear' : 'Sine.easeIn' }).then(() => {
-      this.burst(ex, ey, kind === 'holy' ? 0x9fffb0 : kind === 'arrow' ? 0xe8dcc0 : ELEMENT_INFO[element].color);
+      this.burst(ex, ey, kind === 'holy' ? 0x9fffb0 : kind === 'arrow' ? 0xe8dcc0 : fx);
       obj.destroy();
     });
   }
@@ -269,12 +271,11 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: v.sprite, x: { from: -9, to: 0 }, duration: 160, ease: 'Bounce.easeOut' });
 
     const base = v.unit.side === 'ally' ? '#ff8a7a' : '#ffffff';
-    const color = h.elem === 'adv' ? '#ffb347' : h.elem === 'dis' ? C.dim : base;
+    const color = h.favored ? '#ffb347' : base;
     const size = h.crit ? 44 : 33;
     this.floatText(v, `${h.amount}`, color, size);
     if (h.crit) this.floatText(v, '치명!', C.goldStr, 22, -46);
-    else if (h.elem === 'adv') this.floatText(v, '약점', '#ffb347', 18, -40);
-    else if (h.elem === 'dis') this.floatText(v, '저항', C.dim, 18, -40);
+    else if (h.favored) this.floatText(v, '천적!', '#ffb347', 18, -40);
 
     this.animateHp(v);
     if (h.downed) this.playDown(v);
@@ -382,16 +383,18 @@ export class BattleScene extends Phaser.Scene {
       x = ALLY_X[u.row][u.slot];
       y = ALLY_Y[u.row];
     }
-    const scale = u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
-    const size = 16 * scale;
+    const isHero = !!u.texture?.startsWith('hero-');
+    const scale = isHero ? 3 : u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
+    const size = (isHero ? 32 : 16) * scale;
     const barW = u.boss ? 220 : 116;
 
     const shadow = this.add.ellipse(0, size / 2 - 4, size * 0.7, size * 0.16, 0x000000, 0.35);
     const sprite = this.add.image(0, 0, u.texture ?? `unit-${u.kind}`).setScale(scale);
     const nameY = -size / 2 - 18;
     const label = u.side === 'ally' ? `${u.name} Lv${u.level}` : u.name;
-    const name = this.add.text(8, nameY, label, textStyle(18, u.boss ? C.redStr : C.text, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
-    const dot = this.add.circle(name.x - name.width / 2 - 10, nameY, 7, ELEMENT_INFO[u.element].color).setStrokeStyle(2, 0x14111c);
+    const name = this.add.text(u.side === 'enemy' ? 8 : 0, nameY, label, textStyle(18, u.boss ? C.redStr : C.text, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
+    const famColor = u.family ? FAMILIES[u.family as Family].color : 0x9d93b0;
+    const dot = this.add.circle(name.x - name.width / 2 - 10, nameY, 7, famColor).setStrokeStyle(2, 0x14111c).setVisible(u.side === 'enemy');
     const hp = this.add.graphics();
     const gauge = this.add.graphics();
     const taunt = this.add.text(0, nameY - 26, '도발', textStyle(18, '#9fd0ff', { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5).setVisible(false);

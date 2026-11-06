@@ -1,6 +1,6 @@
 // 밸런스 시뮬레이션: npm run sim [-- 판수]
-// 1) 기준 파티(직업별 1명, 개체값·특성 없음)로 각 층을 "그 층의 예상 레벨"에서 N번 싸움
-// 2) 무작위 영웅 파티로 같은 조건 → 랜덤 생성이 난이도를 얼마나 흔드는지 확인
+// 1) 최저선: 직업별 1명, 전원 인간, 개체값·특성 없음 (실제보다 약함)으로 각 층을 "그 층의 예상 레벨"에서 N번 싸움
+// 2) 무작위 영웅(종족·특성·개체값 무작위, 직업만 고정)으로 같은 조건 → 랜덤 생성이 난이도를 얼마나 흔드는지 확인
 import { Battle } from '../src/battle/engine';
 import { Rng } from '../src/battle/rng';
 import type { UnitInit } from '../src/battle/types';
@@ -9,6 +9,7 @@ import { FLOORS, buildEnemies } from '../src/data/floors';
 import { generateHero, heroToUnit, type Hero } from '../src/data/heroes';
 
 const N = Number(process.argv[2] ?? 500);
+const ctx = () => ({ names: new Set<string>(), looks: new Set<string>() });
 
 /** 레벨 f에서 f층을 깨면 딱 1레벨 오르도록 경험치가 짜여 있음 → f층 도전 시 레벨 f */
 const levelFor = (floor: number) => floor;
@@ -18,8 +19,7 @@ const LINEUP: ClassId[] = ['knight', 'warrior', 'priest', 'archer', 'mage'];
 function baseline(level: number): UnitInit[] {
   return LINEUP.map((classId, i) => {
     const h: Hero = {
-      ...generateHero(() => 0.5, `b${i}`, new Set(), { classId, now: 0 }),
-      element: (['none', 'fire', 'none', 'wind', 'water'] as const)[i],
+      ...generateHero(() => 0.5, `b${i}`, ctx(), { classId, race: 'human', now: 0 }),
       traits: [],
       statMul: { hp: 1, atk: 1, def: 1, spd: 1 },
       level,
@@ -30,7 +30,7 @@ function baseline(level: number): UnitInit[] {
 
 function randomParty(level: number, rng: Rng): UnitInit[] {
   // 직업은 기준 진형대로, 나머지(속성·특성·개체값)만 무작위
-  return LINEUP.map((classId, i) => heroToUnit({ ...generateHero(() => rng.next(), `r${i}`, new Set(), { classId, now: 0 }), level }, i));
+  return LINEUP.map((classId, i) => heroToUnit({ ...generateHero(() => rng.next(), `r${i}`, ctx(), { classId, now: 0 }), level }, i));
 }
 
 function run(label: string, party: (floor: number, i: number) => UnitInit[]): void {

@@ -42,6 +42,7 @@ export function applyBattleResult(d: SaveData, floor: number, outcome: 'win' | '
     reports.push({ hero, fate, levelBefore, levelAfter: hero.level });
   }
 
+  if (!d.known.includes(floor)) d.known.push(floor);
   if (outcome === 'win') d.cleared = Math.max(d.cleared, floor);
   else d.defeats++;
 

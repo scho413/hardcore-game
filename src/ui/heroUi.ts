@@ -1,10 +1,10 @@
 import Phaser from 'phaser';
 import { ensureHeroTextures } from '../art/textures';
 import { CLASSES } from '../data/classes';
-import { xpToNext, type Hero } from '../data/heroes';
+import { heroRace, xpToNext, type Hero } from '../data/heroes';
 import { TRAITS } from '../data/traits';
 import { C, textStyle } from './theme';
-import { elementChip, panel } from './widgets';
+import { chip, panel } from './widgets';
 
 export function fmtTime(ms: number): string {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -46,14 +46,14 @@ export function heroCard(
   ensureHeroTextures(scene, hero);
   const cls = CLASSES[hero.classId];
   panel(scene, x, y, w, h, opts.highlight ? C.panelHi : C.panel, opts.highlight ? C.gold : C.line);
-  const img = scene.add.image(x + 50, y + h / 2, `hero-${hero.id}`).setScale(4);
+  const img = scene.add.image(x + 50, y + h / 2, `hero-${hero.id}`).setScale(2.5);
   if (hero.status === 'injured') img.setTint(0x9a8a9a);
 
   const tx = x + 98;
   scene.add.text(tx, y + 14, hero.name, textStyle(22));
   scene.add.text(x + w - 14, y + 16, `Lv ${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
   const clsText = scene.add.text(tx, y + 46, cls.name, textStyle(18, C.dim));
-  elementChip(scene, tx + clsText.width + 28, y + 56, hero.element, 18);
+  raceChip(scene, tx + clsText.width + 10, y + 56, hero);
 
   const st = opts.note ?? statusLine(hero);
   const line3 = h >= 140 ? traitNames(hero) : '';
@@ -73,4 +73,10 @@ export function heroCard(
 export function shade(scene: Phaser.Scene, top: number, height: number, onClose?: () => void): void {
   const r = scene.add.rectangle(360, top + height / 2, 720, height, 0x0b0910, 0.78).setDepth(100).setInteractive();
   if (onClose) r.on('pointerup', onClose);
+}
+
+/** 종족 칩 (예: 고양이 수인) */
+export function raceChip(scene: Phaser.Scene, x: number, y: number, hero: Hero, size = 18): Phaser.GameObjects.Container {
+  const r = heroRace(hero);
+  return chip(scene, x, y, r.name, r.color, size);
 }

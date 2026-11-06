@@ -3,9 +3,6 @@
 
 export type Side = 'ally' | 'enemy';
 
-/** 불 > 바람 > 물 > 불. 무속성은 상성 없음 (GDD 4.1) */
-export type Element = 'fire' | 'water' | 'wind' | 'none';
-
 /** 진형: 전열 2 / 중열 1 / 후열 2 (GDD 4.1). 적은 front/back만 사용 */
 export type Row = 'front' | 'mid' | 'back';
 
@@ -64,9 +61,14 @@ export interface UnitInit {
   kind: string;
   /** 화면에서 쓸 텍스처 키. 없으면 `unit-<kind>` */
   texture?: string;
-  /** 특성 id (data/traits.ts). 엔진은 겁쟁이·광전사·강철 피부만 직접 처리 */
+  /** 특성·종족 효과 id (data/traits.ts, data/races.ts의 RaceHook) */
   traits?: string[];
-  element: Element;
+  /** 적 계열 (data/races.ts) */
+  family?: string;
+  /** 이 유닛이 피해 +25%를 주는 계열 (종족 천적) */
+  favored?: string[];
+  /** 투사체·마법 색 */
+  fxColor?: number;
   row: Row;
   /** 같은 열 안에서의 위치 (0부터) */
   slot: number;
@@ -88,17 +90,16 @@ export interface Unit extends UnitInit {
   tauntTurns: number;
 }
 
-export type ElemRel = 'adv' | 'dis' | 'neutral';
-
 export interface Hit {
   targetId: string;
   amount: number;
   heal: boolean;
   crit: boolean;
-  elem: ElemRel;
+  /** 천적 보너스가 붙은 타격 */
+  favored: boolean;
   /** 이 타격으로 쓰러졌는지 */
   downed: boolean;
-  /** 회피 (겁쟁이 특성) */
+  /** 회피 (겁쟁이 특성, 토끼 수인) */
   dodged?: boolean;
 }
 
