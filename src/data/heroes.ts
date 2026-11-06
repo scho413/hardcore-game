@@ -2,7 +2,7 @@ import { CLOTHS, lookSignature, randomLook, type Gender, type Look } from '../ar
 import type { CombatFx, Stats, UnitInit } from '../battle/types';
 import { CLASSES, roleOf, statsAtLevel, type ClassId } from './classes';
 import { FORMATIONS, slotPosition, type FormationId } from './formations';
-import { GRADES, weaponStats, type Weapon } from './items';
+import { GRADES, SPECIALS, weaponUsable, type Weapon } from './items';
 import { randomName } from './names';
 import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
 import { rollBirthTraits, traitEffects, type HeroTrait } from './traits';
@@ -68,13 +68,13 @@ export const ROSTER_MAX = 12;
 export const LOG_MAX = 40;
 
 // ─── 피로 (GDD 3.2.1) ───
-export const FATIGUE_MAX = 6;
-export const FATIGUE_TOWER = 3;
-export const FATIGUE_DUNGEON = 2;
+export const FATIGUE_MAX = 10;
+export const FATIGUE_TOWER = 5;
+export const FATIGUE_DUNGEON = 3;
 /** 피로 1당 체력·공격·방어 감소 */
-export const FATIGUE_PENALTY = 0.05;
+export const FATIGUE_PENALTY = 0.03;
 /** 피로 1 회복 시간 */
-export const FATIGUE_RECOVER_MS = 5 * 60 * 1000;
+export const FATIGUE_RECOVER_MS = 6 * 60 * 1000;
 
 /** 지금 피로 (시간 경과 반영, 소수) */
 export function fatigueNow(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
@@ -219,8 +219,10 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   const rowEff = row ? fEff[row] ?? {} : {};
   const allEff = fEff.all ?? {};
 
-  const ws = h.weapon ? weaponStats(h.weapon) : null;
-  const wAdd = (k: 'hp' | 'atk' | 'def' | 'spd') => (!ws ? 0 : k === 'atk' ? ws.atk : ws.sub === k ? ws.subValue : 0);
+  // 무기 (내구도 0이면 효과 없음)
+  const w = weaponUsable(h.weapon) ? h.weapon! : null;
+  const wOpt = (k: string) => (w ? w.opts.filter((o) => o.k === k).reduce((a, o) => a + o.v, 0) : 0);
+  const wAdd = (k: 'hp' | 'atk' | 'def' | 'spd') => (!w ? 0 : k === 'atk' ? w.atk : wOpt(k));
   const tired = ctx.ignoreFatigue ? 0 : fatigueLevel(h, ctx.now) * FATIGUE_PENALTY;
   const mul = (k: 'hp' | 'atk' | 'def' | 'spd') =>
     Math.max(
@@ -238,7 +240,7 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
     atk: Math.round(s.atk * h.statMul.atk * (m.atk ?? 1) * mul('atk')),
     def: Math.round(s.def * h.statMul.def * (m.def ?? 1) * mul('def')),
     spd: Math.round(s.spd * h.statMul.spd * (m.spd ?? 1) * mul('spd')),
-    crit: s.crit + (m.crit ?? 0) + te.crit + (ws?.sub === 'crit' ? ws.subValue : 0),
+    crit: s.crit + (m.crit ?? 0) + te.crit + wOpt('crit'),
   };
 
   let fx: CombatFx = { vsFamily: { [race.favored]: FAVORED_BONUS } };
@@ -246,7 +248,18 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   fx = addFx(fx, te.fx);
   fx = addFx(fx, rowEff.fx);
   fx = addFx(fx, allEff.fx);
-  if (ws?.sub === 'healGive') fx = addFx(fx, { healGive: ws.subValue });
+  if (w) {
+    const healGive = wOpt('healGive');
+    if (healGive) fx = addFx(fx, { healGive });
+    for (const sp of w.specials) {
+      const v = SPECIALS[sp.id].values[sp.lv];
+      if (sp.id === 'laststand') fx.lastStand = Math.max(fx.lastStand ?? 0, v);
+      else if (sp.id === 'lifesteal') fx.lifesteal = (fx.lifesteal ?? 0) + v;
+      else if (sp.id === 'vital') fx.critDmg = (fx.critDmg ?? 0) + v;
+      else if (sp.id === 'chain') fx.chain = Math.max(fx.chain ?? 0, v);
+      else if (sp.id === 'miracle') fx.miracle = Math.max(fx.miracle ?? 0, v);
+    }
+  }
   return { stats, fx };
 }
 
@@ -266,7 +279,7 @@ export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId;
     kind: h.classId,
     texture: `hero-${h.id}`,
     fx,
-    fxColor: h.weapon ? GRADE_FX[h.weapon.grade] : parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
+    fxColor: weaponUsable(h.weapon) ? GRADE_FX[h.weapon!.grade] : parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
     row: pos.row,
     slot: pos.index,
     stats,

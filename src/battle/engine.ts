@@ -42,6 +42,7 @@ export class Battle {
       atkBuff: null,
       kills: {},
       lowestHp: 1,
+      used: {},
     }));
   }
 
@@ -91,6 +92,15 @@ export class Battle {
           for (let i = 0; i < (skill.hits ?? 1); i++) {
             if (t.down) break;
             hits.push(this.dealDamage(actor, t, skill));
+          }
+        }
+        // 연쇄 (무기 특수 능력): 단일 대상 공격 후 다른 적에게 튐
+        if (fx.chain && skill.targeting !== 'all' && this.rng.next() < fx.chain) {
+          const others = this.alive(actor.side === 'ally' ? 'enemy' : 'ally').filter((u) => !targets.includes(u));
+          if (others.length) {
+            const extra = this.rng.pick(others);
+            targets.push(extra);
+            hits.push(this.dealDamage(actor, extra, { ...skill, name: '연쇄', mult: skill.mult * 0.6 }));
           }
         }
         break;
@@ -231,7 +241,7 @@ export class Battle {
     dmg *= this.rng.range(0.9, 1.1);
 
     const crit = this.rng.next() < actor.stats.crit;
-    if (crit) dmg *= CRIT_MULT;
+    if (crit) dmg *= CRIT_MULT + (a.critDmg ?? 0);
 
     // 받는 피해 배율: 강철 피부·진형·트라우마
     const aoe = skill.targeting === 'all';
@@ -240,6 +250,10 @@ export class Battle {
 
     const amount = Math.max(1, Math.round(dmg));
     target.hp = Math.max(0, target.hp - amount);
+    // 흡혈
+    if (a.lifesteal && !actor.down) actor.hp = Math.min(actor.stats.hp, actor.hp + Math.round(amount * a.lifesteal));
+    let saved: string | undefined;
+    if (target.hp === 0) saved = this.trySave(target);
     target.lowestHp = Math.min(target.lowestHp, target.hp / target.stats.hp);
     const downed = target.hp === 0;
     if (downed) {
@@ -251,7 +265,24 @@ export class Battle {
       const fam = target.family ?? 'none';
       actor.kills[fam] = (actor.kills[fam] ?? 0) + 1;
     }
-    return { ...base, amount, crit, downed };
+    return { ...base, amount, crit, downed, saved };
+  }
+
+  /** 쓰러질 피해: 불굴(자신) → 기적(살아있는 아군) 순서로 확인 */
+  private trySave(target: Unit): string | undefined {
+    const ls = target.fx?.lastStand;
+    if (ls && !target.used.lastStand) {
+      target.used.lastStand = true;
+      target.hp = Math.max(1, Math.round(target.stats.hp * ls));
+      return '불굴!';
+    }
+    const healer = this.units.find((u) => u !== target && u.side === target.side && !u.down && u.fx?.miracle && !u.used.miracle);
+    if (healer) {
+      healer.used.miracle = true;
+      target.hp = Math.max(1, Math.round(target.stats.hp * healer.fx!.miracle!));
+      return '기적!';
+    }
+    return undefined;
   }
 
   private heal(actor: Unit, target: Unit, skill: SkillDef): Hit {

@@ -16,15 +16,15 @@ export function statusLine(h: Hero, now = Date.now()): { text: string; color: st
   if (h.status === 'dead') return { text: `${h.diedFloor}층에서 사망`, color: C.redStr };
   if (h.status === 'injured') return { text: `중상 ${fmtTime((h.injuredUntil ?? now) - now)}`, color: '#ff9a4a' };
   const f = fatigueLevel(h, now);
-  if (f > 0) return { text: `피로 ${f}/${FATIGUE_MAX} -${Math.round(f * FATIGUE_PENALTY * 100)}%`, color: f >= 4 ? '#ff9a4a' : C.goldStr };
+  if (f > 0) return { text: `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} -${Math.round(f * FATIGUE_PENALTY * 100)}%`, color: FATIGUE_MAX - f < 5 ? '#ff9a4a' : C.goldStr };
   return { text: '출전 가능', color: C.greenStr };
 }
 
-/** 피로 상세: "피로 4/6 · 능력치 -20% · 3:12 후 1 회복" */
+/** 기력 상세: "기력 6/10 · 능력치 -12% · 3:12 후 1 회복" (내부 값은 피로 = 10 - 기력) */
 export function fatigueDetail(h: Hero, now = Date.now()): string {
   const f = fatigueLevel(h, now);
-  if (f <= 0) return '피로 없음';
-  return `피로 ${f}/${FATIGUE_MAX} · 능력치 -${Math.round(f * FATIGUE_PENALTY * 100)}% · ${fmtTime(fatigueNextMs(h, now))} 후 1 회복`;
+  if (f <= 0) return `기력 ${FATIGUE_MAX}/${FATIGUE_MAX} · 가득`;
+  return `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} · 능력치 -${Math.round(f * FATIGUE_PENALTY * 100)}% · ${fmtTime(fatigueNextMs(h, now))} 후 +1`;
 }
 
 const MARK = { good: '+', bad: '-', mixed: '±' } as const;

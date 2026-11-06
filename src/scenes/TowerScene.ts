@@ -139,7 +139,7 @@ export class TowerScene extends Page {
   private drawGo(): void {
     const team = readyFormation(FATIGUE_TOWER);
     const y = PAGE_BOTTOM - TAB_H - 70;
-    const label = team.length === 0 ? '출전할 영웅이 없습니다' : `${this.floor}층 도전 · ${team.length}명 · 피로 +${FATIGUE_TOWER}`;
+    const label = team.length === 0 ? '출전할 영웅이 없습니다' : `${this.floor}층 도전 · ${team.length}명 · 기력 -${FATIGUE_TOWER}`;
     const b = button(this, W / 2, y, W - 56, 92, label, () => {
       game.data.attempts++;
       save();

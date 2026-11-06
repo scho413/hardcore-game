@@ -9,7 +9,7 @@ export type MonsterId =
   // 인간
   | 'bandit'
   // 야수
-  | 'wolfkin' | 'hyena' | 'gnoll'
+  | 'wolfkin' | 'hyena' | 'gnoll' | 'gnoll_chief'
   // 악마
   | 'imp' | 'succubus'
   // 언데드
@@ -163,6 +163,13 @@ export const MONSTERS: Record<MonsterId, MonsterDef> = {
     basic: melee('철퇴'),
     skills: [skill('frenzy', '광란의 연타', 0.7, 'front', 3, { hits: 3 })],
     note: '연타로 전열을 두들김',
+  },
+  gnoll_chief: {
+    id: 'gnoll_chief', name: '놀 우두머리', family: 'beastkin', row: 'front', boss: 'mid', fx: 0xff6633,
+    base: { hp: 880, atk: 40, def: 13, spd: 98, crit: 0.1 },
+    basic: melee('대철퇴'),
+    skills: [skill('howl', '피의 포효', 0.8, 'all', 3, { big: true }), skill('maul', '물어뜯기', 0.75, 'lowest', 2, { hits: 3 })],
+    note: '던전 보스. 포효로 전체 공격, 약한 영웅을 물어뜯음',
   },
   // ── 악마 ──
   imp: {

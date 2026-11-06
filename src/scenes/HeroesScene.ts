@@ -7,7 +7,7 @@ import { drawChronicle } from '../ui/chronicle';
 import { game, living, recruit, resetProgress, save } from '../state';
 import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { weaponIcon } from '../art/itemArt';
-import { GRADES, weaponDesc, weaponName } from '../data/items';
+import { GRADES, specialText, weaponDesc, weaponName } from '../data/items';
 import { addLog } from '../data/heroes';
 import { Page } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
@@ -164,26 +164,30 @@ export class HeroesScene extends Page {
 
     // 무기 (GDD 7)
     const wy = ry + 150;
+    const wpn = h.weapon;
+    const sp = wpn ? wpn.specials.map(specialText) : [];
+    const wh = 64 + sp.length * 26;
     const wg = this.add.graphics();
-    wg.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 24, wy, w - 48, 64, 8);
-    if (h.weapon) {
-      const wpn = h.weapon;
-      wg.fillStyle(GRADES[wpn.grade].color, 1).fillRect(x + 24, wy, 6, 64);
-      this.add.image(x + 62, wy + 32, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade)).setScale(3.4);
+    wg.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 24, wy, w - 48, wh, 8);
+    if (wpn) {
+      wg.fillStyle(GRADES[wpn.grade].color, 1).fillRect(x + 24, wy, 6, wh);
+      this.add.image(x + 62, wy + 32, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade)).setScale(3.4).setAlpha(wpn.dur > 0 ? 1 : 0.4);
       this.add.text(x + 98, wy + 8, weaponName(wpn), textStyle(22, GRADES[wpn.grade].str));
-      this.add.text(x + 98, wy + 36, weaponDesc(wpn), textStyle(18, C.dim));
+      this.add.text(x + 98, wy + 36, `${weaponDesc(wpn)}`, textStyle(18, C.dim)).setCrop(0, 0, w - 270, 30);
+      this.add.text(x + w - 24 - 140, wy + 8, wpn.dur > 0 ? `내구 ${wpn.dur}` : '수리 필요', textStyle(18, wpn.dur > 30 ? C.faint : C.redStr)).setOrigin(1, 0);
+      sp.forEach((t, i) => this.add.text(x + 44, wy + 64 + i * 26, t, textStyle(18, GRADES[wpn.grade].str)));
     } else {
       this.add.text(x + 44, wy + 32, '무기 없음 · 대장간에서 제작', textStyle(18, C.faint)).setOrigin(0, 0.5);
     }
     const spare = game.data.stash.filter((wp) => wp.cls === h.classId).length;
-    const ab = button(this, x + w - 24 - 70, wy + 32, 124, 48, h.weapon ? '교체' : `장착 ${spare}`, () => {
+    const ab = button(this, x + w - 24 - 70, wy + 38, 124, 44, h.weapon ? '교체' : `장착 ${spare}`, () => {
       this.arming = true;
       this.requestRender();
     }, { size: 18 });
     ab.setEnabled(spare > 0 || !!h.weapon);
 
     // 특성
-    const ty = wy + 84;
+    const ty = wy + wh + 20;
     this.add.text(x + 24, ty, `특성 ${h.traits.length} / ${TRAIT_MAX}`, textStyle(22, C.goldStr));
     const race = heroRace(h);
     const list: [string, string, string][] = [
@@ -232,7 +236,7 @@ export class HeroesScene extends Page {
       g.fillStyle(GRADES[wp.grade].color, 1).fillRect(x + 20, ry, 6, rowH - 10);
       this.add.image(x + 58, ry + (rowH - 10) / 2, weaponIcon(this, wp.cls, wp.tier, wp.grade)).setScale(3.4);
       this.add.text(x + 94, ry + 8, weaponName(wp), textStyle(22, GRADES[wp.grade].str));
-      this.add.text(x + 94, ry + 36, weaponDesc(wp), textStyle(18, C.dim));
+      this.add.text(x + 94, ry + 36, `${weaponDesc(wp)} · 내구 ${wp.dur}`, textStyle(18, C.dim)).setCrop(0, 0, w - 130, 30);
       this.add.zone(x + w / 2, ry + (rowH - 10) / 2, w - 40, rowH - 10).setInteractive({ useHandCursor: true }).on('pointerup', () => {
         const stash = game.data.stash;
         stash.splice(stash.indexOf(wp), 1);

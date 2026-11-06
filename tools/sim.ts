@@ -59,17 +59,20 @@ run('최저선 (전원 인간, 특성 없음)', (f) => baseline(levelFor(f), f))
 const rng = new Rng(12345);
 run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), f, rng));
 
-// 3) 던전 (GDD 6): 탑 power층 수준 적. 같은 레벨(=power)에서의 승률
-import { DUNGEONS, DUNGEON_IDS, buildDungeonEnemies } from '../src/data/dungeons';
-console.log(`\n[던전 · 무작위 영웅, 레벨 = 적 수준] 판수 ${N}`);
+// 3) 던전 (GDD 6): 던전 n층 = 탑 n층 수준 적. 레벨 = 층
+import { DUNGEONS, DUNGEON_FLOORS, DUNGEON_IDS, buildDungeonEnemies, dungeonLineup } from '../src/data/dungeons';
+console.log(`\n[던전 · 무작위 영웅, 레벨 = 층] 판수 ${N}`);
 for (const id of DUNGEON_IDS) {
-  DUNGEONS[id].levels.forEach((lv, li) => {
+  const row: string[] = [];
+  for (let f = 1; f <= DUNGEON_FLOORS; f++) {
     let wins = 0;
-    const r2 = new Rng(999 + li);
+    const r2 = new Rng(999 + f);
     for (let i = 0; i < N; i++) {
-      const b = new Battle(randomParty(lv.power, lv.power, r2), buildDungeonEnemies(id, li), i * 104729 + li);
+      const b = new Battle(randomParty(f, f, r2), buildDungeonEnemies(id, f), i * 104729 + f);
       if (b.runToEnd() === 'win') wins++;
     }
-    console.log(`${DUNGEONS[id].name.padEnd(8)} ${lv.name.padEnd(5)} Lv${String(lv.power).padStart(2)}  ${((wins / N) * 100).toFixed(1).padStart(5)}%`);
-  });
+    row.push(`${f}:${Math.round((wins / N) * 100)}%`);
+  }
+  console.log(`${DUNGEONS[id].name}  ${row.join(' ')}`);
+  if (process.argv.includes('--lineup')) for (let f = 1; f <= DUNGEON_FLOORS; f++) console.log(`  ${f}층 ${dungeonLineup(id, f).join(', ')}`);
 }

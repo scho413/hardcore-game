@@ -67,6 +67,17 @@ export interface CombatFx {
   vsFamily?: Record<string, number>;
   /** 계열별 받는 피해 가산 (트라우마 +) */
   fromFamily?: Record<string, number>;
+  // ── 무기 특수 능력 (전설 이상) ──
+  /** 불굴: 전투당 1번, 쓰러질 피해를 받으면 이 체력 비율로 버팀 */
+  lastStand?: number;
+  /** 흡혈: 준 피해의 비율만큼 회복 */
+  lifesteal?: number;
+  /** 급소: 치명타 피해 가산 */
+  critDmg?: number;
+  /** 연쇄: 단일 공격 후 이 확률로 다른 적 1명에게 60% 피해 */
+  chain?: number;
+  /** 기적: 전투당 1번, 쓰러진 아군을 이 체력 비율로 일으킴 */
+  miracle?: number;
 }
 
 export type Projectile = 'none' | 'arrow' | 'magic' | 'holy';
@@ -112,6 +123,8 @@ export interface UnitInit {
   basic: SkillDef;
   level?: number;
   boss?: 'mid' | 'main';
+  /** 희귀 몬스터 (황금 변종) */
+  rare?: boolean;
 }
 
 export interface Unit extends UnitInit {
@@ -130,6 +143,8 @@ export interface Unit extends UnitInit {
   downedBy?: { name: string; skill: string; family?: string };
   /** 이 전투 중 가장 낮았던 체력 비율 */
   lowestHp: number;
+  /** 전투당 1번 쓰는 능력 사용 여부 (불굴, 기적) */
+  used: Record<string, boolean>;
 }
 
 export interface Hit {
@@ -145,6 +160,8 @@ export interface Hit {
   dodged?: boolean;
   /** 빗나감 (서툰 손) */
   missed?: boolean;
+  /** 쓰러질 뻔했지만 버팀/일어남 (불굴, 기적) */
+  saved?: string;
 }
 
 export interface ActionResult {

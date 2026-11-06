@@ -264,6 +264,28 @@ export const SPRITES: Record<string, PixelSprite> = {
       '...kkkk.kkkk....',
     ],
   },
+  // 놀 우두머리: 놀 그림에 붉은 갈기·금 장식
+  gnoll_chief: {
+    palette: { k: K, Y: '#8a5a3a', D: '#c84a2a', E: '#ffdd33', W: '#e8dcc0', N: K, A: '#8a2a2a', L: '#3a2a1a', M: '#e8c25a' },
+    rows: [
+      '..kk......kk....',
+      '.kYYk....kYYk...',
+      '.kDYYkkkkYYDk...',
+      '.kDYYYYYYYYDk...',
+      '.kYYDYYYYDYYk...',
+      '.kYYEYYYYEYYk...',
+      '..kYYYWWYYYk....',
+      '...kYWNNWYk.....',
+      '..kkkMWWMkkk..k.',
+      '.kYkAAAMAAkYkkMk',
+      '.kYkAAAAAAkYkkMk',
+      '.kYkkAMMAkkYkWk.',
+      '..k.kLLLLk.kkWk.',
+      '....kLkkLk...k..',
+      '...kYYk.kYYk....',
+      '...kkkk.kkkk....',
+    ],
+  },
   hyena: {
     palette: { k: K, H: '#b8a070', D: '#4a3a2a', E: '#ffcc33', W: '#d8ccb0', N: K, F: '#ffffff', C: '#e8e8e8', L: '#4a3a2a' },
     rows: [
