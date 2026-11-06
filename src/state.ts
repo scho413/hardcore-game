@@ -73,10 +73,12 @@ export interface SaveData {
   recruitAds: number;
   potions: Partial<Record<PotionId, number>>;
   /** 다음 전투에 쓸 영약 */
-  elixirs: { might?: boolean; guard?: boolean };
+  elixirs: { might?: boolean; guard?: boolean; antidote?: boolean };
   tutorial: TutorialStep;
   /** 테스트 모드: 모든 층 바로 도전·정찰, 즉시 건설, 자원 지급 */
   test: boolean;
+  /** 던전 보스에게서 들은 탑 구간 소문 (구간 번호) */
+  rumors: number[];
 }
 
 const KEY = 'hardcore-game/save/v8';
@@ -109,6 +111,7 @@ function fresh(): SaveData {
     elixirs: {},
     tutorial: 0,
     test: false,
+    rumors: [],
   };
   // 시작 영웅: 무작위 2명 (튜토리얼에서 1명 더 모집)
   for (let i = 0; i < 2; i++) recruit(d);

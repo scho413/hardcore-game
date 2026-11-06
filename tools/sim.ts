@@ -5,8 +5,9 @@ import { Battle } from '../src/battle/engine';
 import { Rng } from '../src/battle/rng';
 import type { UnitInit } from '../src/battle/types';
 import type { ClassId } from '../src/data/classes';
-import { FLOORS, buildEnemies } from '../src/data/floors';
+import { FLOORS, buildEnemies, summonerFor } from '../src/data/floors';
 import { generateHero, heroToUnit, type Hero } from '../src/data/heroes';
+import { makeWeapon } from '../src/data/items';
 
 const N = Number(process.argv[2] ?? 500);
 const ctx = () => ({ names: new Set<string>(), looks: new Set<string>() });
@@ -41,7 +42,7 @@ function run(label: string, party: (floor: number, i: number) => UnitInit[]): vo
     let turns = 0;
     let survivors = 0;
     for (let i = 0; i < N; i++) {
-      const b = new Battle(party(f.floor, i), buildEnemies(f.floor), i * 7919 + f.floor);
+      const b = new Battle(party(f.floor, i), buildEnemies(f.floor), i * 7919 + f.floor, summonerFor(f.floor));
       if (b.runToEnd() === 'win') {
         wins++;
         survivors += b.alive('ally').length;
@@ -56,6 +57,18 @@ function run(label: string, party: (floor: number, i: number) => UnitInit[]): vo
 }
 
 run('최저선 (전원 인간, 특성 없음)', (f) => baseline(levelFor(f), f));
+if (process.argv.includes('--weapons')) {
+  // 구간별 무기 (11~20 고급, 21~30 상급, 31~40 전설, 41~50 신화)
+  const wr = new Rng(777);
+  const gradeFor = (f: number) => [0, 1, 2, 3, 4][Math.min(4, Math.floor((f - 1) / 10))];
+  run('무작위 영웅 + 구간별 무기', (f) =>
+    LINEUP.map((classId, i) => {
+      const h = generateHero(() => wr.next(), `w${i}`, ctx(), { classId, now: 0 });
+      const weapon = f > 10 ? makeWeapon('w', classId, 3, gradeFor(f), () => wr.next(), 0) : undefined;
+      return heroToUnit({ ...h, level: levelFor(f), weapon }, i, { formation: 'basic', floor: f, now: 0 });
+    }),
+  );
+}
 const rng = new Rng(12345);
 run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), f, rng));
 

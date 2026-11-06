@@ -3,7 +3,7 @@ import { Battle, GAUGE_MAX } from '../battle/engine';
 import { randomSeed } from '../battle/rng';
 import type { ActionResult, Hit, Unit } from '../battle/types';
 import { ensureHeroTextures } from '../art/textures';
-import { FLOORS, TOP_FLOOR, buildEnemies } from '../data/floors';
+import { FLOORS, TOP_FLOOR, buildEnemies, summonerFor } from '../data/floors';
 import { DUNGEONS, DUNGEON_FLOORS, RARE_CHANCE, buildDungeonEnemies, dungeonPower, type DungeonId } from '../data/dungeons';
 import { FATIGUE_DUNGEON, FATIGUE_TOWER, heroToUnit } from '../data/heroes';
 import { matsText, type Materials } from '../data/items';
@@ -93,10 +93,11 @@ export class BattleScene extends Phaser.Scene {
     const allies = team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor }));
     // 연금소 영약: 다음 전투 1번 (GDD 9)
     const el = game.data.elixirs;
-    if (el.might || el.guard) {
+    if (el.might || el.guard || el.antidote) {
       for (const a of allies) {
         if (el.might) a.stats.atk = Math.round(a.stats.atk * 1.1);
         if (el.guard) a.stats.def = Math.round(a.stats.def * 1.15);
+        if (el.antidote) a.fx = { ...a.fx, poisonResist: 1 };
       }
       game.data.elixirs = {};
     }
@@ -107,7 +108,8 @@ export class BattleScene extends Phaser.Scene {
 
     // 결과를 먼저 확정해서 저장 (전투는 시드로 결정되므로 화면과 결과가 같음).
     // 패배가 보일 때 앱을 꺼서 사망을 피하는 것을 막기 위함.
-    const verdict = new Battle(allies, enemies, seed);
+    const summoner = this.dungeon ? null : summonerFor(this.floor);
+    const verdict = new Battle(allies, enemies, seed, summoner);
     const outcome = verdict.runToEnd();
     const res = this.dungeon
       ? applyDungeonResult(game.data, this.dungeon, this.dfloor, outcome, verdict.units, { rare })
@@ -128,7 +130,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
 
-    this.battle = new Battle(allies, enemies, seed);
+    this.battle = new Battle(allies, enemies, seed, summoner);
 
     this.drawBackground();
     this.drawHeader();
@@ -148,6 +150,12 @@ export class BattleScene extends Phaser.Scene {
       const r = this.battle.step();
       if (!r) break;
       await this.playAction(r);
+      if (r.phase) {
+        const v = this.views.get(r.phase.unitId);
+        this.cameras.main.shake(400, 0.012);
+        if (v) this.burst(v.root.x, v.root.y, 0xff5a4a);
+        await this.banner(`${this.battle.unit(r.phase.unitId).name} · ${r.phase.name}`, C.redStr, 1000);
+      }
       if (!this.running) return;
       this.refreshStatus();
       if (r.enraged && !this.enrageShown) {
@@ -189,6 +197,25 @@ export class BattleScene extends Phaser.Scene {
     this.logText.setText(this.describe(r));
     this.turnText.setText(`행동 ${r.turn}`);
 
+    // 독 피해 (턴 시작)
+    if (r.poisonTick) {
+      const h = r.poisonTick;
+      actor.sprite.setTintFill(0x9adf5a);
+      this.time.delayedCall(90, () => actor.sprite.active && !actor.unit.down && actor.sprite.clearTint());
+      this.floatText(actor, `독 ${h.amount}`, '#9adf5a', 26);
+      if (h.saved) this.floatText(actor, h.saved, '#ffd25a', 33, -70);
+      this.animateHp(actor);
+      if (h.downed) this.playDown(actor);
+      await this.wait(280);
+    }
+    if (r.stunned) {
+      this.floatText(actor, '기절', '#ffd25a', 26);
+      await this.tween({ targets: actor.sprite, angle: { from: -8, to: 8 }, duration: 80, yoyo: true, repeat: 2 });
+      actor.sprite.angle = 0;
+      return;
+    }
+    if (r.skill.id === 'poisoned') return;
+
     // 행동 예고: 살짝 뛰기
     await this.tween({ targets: actor.sprite, y: -14, duration: 90, yoyo: true, ease: 'Quad.easeOut' });
 
@@ -206,6 +233,8 @@ export class BattleScene extends Phaser.Scene {
       await this.playTaunt(actor);
     } else if (effect === 'buff') {
       await this.playBuff(r);
+    } else if (effect === 'summon') {
+      await this.playSummon(r);
     } else if (effect === 'heal') {
       await Promise.all(r.hits.map((h) => this.projectile(actor, this.views.get(h.targetId)!, 'holy').then(() => this.applyHit(h))));
     } else if (r.skill.projectile === 'none') {
@@ -214,6 +243,38 @@ export class BattleScene extends Phaser.Scene {
     } else {
       await this.playRanged(actor, r);
     }
+  }
+
+  /** 소환: 새 유닛을 같은 열에 세우고 자리 다시 맞춤 */
+  private async playSummon(r: ActionResult): Promise<void> {
+    const ids = r.summoned ?? [];
+    if (!ids.length) return;
+    for (const id of ids) {
+      const u = this.battle.unit(id);
+      // 같은 자리에 있던 쓰러진 유닛은 숨김
+      for (const v of this.views.values()) if (v.unit.side === u.side && v.unit.row === u.row && v.unit.slot === u.slot && v.unit.down) v.root.setVisible(false);
+      this.createView(u);
+      const v = this.views.get(id)!;
+      v.root.setAlpha(0).setScale(0.4);
+      this.burst(v.root.x, v.root.y, 0x9adf5a);
+      this.tweens.add({ targets: v.root, alpha: 1, scale: 1, duration: 260, ease: 'Back.easeOut' });
+    }
+    // 열 자리 다시 계산
+    for (const v of this.views.values()) {
+      if (v.unit.side !== 'enemy') continue;
+      const x = this.enemyX(v.unit);
+      if (x !== v.homeX) {
+        v.homeX = x;
+        this.tweens.add({ targets: v.root, x, duration: 220 });
+      }
+    }
+    await this.wait(300);
+  }
+
+  /** 적 x 위치: 같은 열 자리 수(가장 큰 slot + 1)로 나눔 */
+  private enemyX(u: Unit): number {
+    const n = Math.max(...this.battle.units.filter((o) => o.side === 'enemy' && o.row === u.row).map((o) => o.slot)) + 1;
+    return spread(Math.min(3, n))[u.slot];
   }
 
   private async playBuff(r: ActionResult): Promise<void> {
@@ -329,6 +390,7 @@ export class BattleScene extends Phaser.Scene {
       return;
     }
     if (h.saved) this.floatText(v, h.saved, '#ffd25a', 33, -70);
+    if (h.inflicted) this.floatText(v, h.inflicted.join('·'), '#c8ff8a', 22, -90);
     if (h.dodged) {
       this.floatText(v, '회피', '#9fd0ff', 33);
       this.tweens.add({ targets: v.sprite, x: { from: 18, to: 0 }, duration: 220, ease: 'Quad.easeOut' });
@@ -451,8 +513,7 @@ export class BattleScene extends Phaser.Scene {
     let x: number;
     let y: number;
     if (u.side === 'enemy') {
-      const sameRow = this.battle.units.filter((o) => o.side === 'enemy' && o.row === u.row);
-      x = spread(sameRow.length)[u.slot];
+      x = this.enemyX(u);
       y = ENEMY_Y[u.row as 'front' | 'back'];
     } else {
       const sameRow = this.battle.units.filter((o) => o.side === 'ally' && o.row === u.row).length;
@@ -514,10 +575,25 @@ export class BattleScene extends Phaser.Scene {
   private refreshStatus(): void {
     for (const v of this.views.values()) {
       this.drawGauge(v);
-      const taunt = !v.unit.down && v.unit.tauntTurns > 0;
-      const buff = !v.unit.down && !!v.unit.atkBuff;
-      v.taunt.setVisible(taunt || buff);
-      v.taunt.setText(taunt ? '도발' : '공격↑').setColor(taunt ? '#9fd0ff' : C.goldStr);
+      const u = v.unit;
+      const taunt = !u.down && u.tauntTurns > 0;
+      const buff = !u.down && !!u.atkBuff;
+      // 상태 표시: 기절 > 독 > 둔화 > 도발 > 공격↑
+      const tag: [string, string] | null = u.down
+        ? null
+        : u.stun > 0
+          ? ['기절', '#ffd25a']
+          : u.poison
+            ? ['독', '#9adf5a']
+            : u.slow
+              ? ['둔화', '#8fd0ff']
+              : taunt
+                ? ['도발', '#9fd0ff']
+                : buff
+                  ? ['공격↑', C.goldStr]
+                  : null;
+      v.taunt.setVisible(!!tag);
+      if (tag) v.taunt.setText(tag[0]).setColor(tag[1]);
       if (taunt) v.sprite.setTint(0xbfdcff);
       else if (!v.unit.down && v.unit.side === 'ally') v.sprite.clearTint();
     }
@@ -526,6 +602,9 @@ export class BattleScene extends Phaser.Scene {
   private describe(r: ActionResult): string {
     const a = this.battle.unit(r.actorId).name;
     if (r.cowered) return `${a}이(가) 겁에 질려 움직이지 못한다`;
+    if (r.stunned) return `${a}이(가) 기절해 움직이지 못한다`;
+    if (r.skill.id === 'poisoned') return `${a}이(가) 독으로 쓰러졌다`;
+    if (r.skill.effect.kind === 'summon') return `${a}의 ${r.skill.name} · ${r.summoned?.length ?? 0}마리 등장`;
     if (r.skill.effect.kind === 'taunt') return `${a}의 도발! 적의 공격을 끌어당긴다`;
     if (r.skill.effect.kind === 'buff') return `${a}의 ${r.skill.name} · ${r.status?.label ?? ''}`;
     if (r.skill.effect.kind === 'heal') {
