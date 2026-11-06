@@ -1,14 +1,15 @@
 import Phaser from 'phaser';
+import { fatigueNow } from '../data/heroes';
 import { game, refresh } from '../state';
 import { C, PAGE_BOTTOM, W, textStyle } from './theme';
 
 export type TabKey = 'base' | 'heroes' | 'tower' | 'dungeon' | 'codex';
 
 const TABS: { key: TabKey; label: string; scene?: string }[] = [
-  { key: 'base', label: '기지' },
+  { key: 'base', label: '기지', scene: 'base' },
   { key: 'heroes', label: '영웅', scene: 'heroes' },
   { key: 'tower', label: '탑', scene: 'tower' },
-  { key: 'dungeon', label: '던전' },
+  { key: 'dungeon', label: '던전', scene: 'dungeon' },
   { key: 'codex', label: '도감', scene: 'codex' },
 ];
 
@@ -32,7 +33,10 @@ export abstract class Page extends Phaser.Scene {
       delay: 1000,
       loop: true,
       callback: () => {
-        if (game.data.heroes.some((h) => h.status === 'injured')) this.render();
+        // 회복 타이머(중상·피로)가 돌고 있으면 1초마다 다시 그림. 누르고 있는 중에는 건너뜀 (탭이 끊기지 않게)
+        if (this.input.activePointer.isDown) return;
+        const now = Date.now();
+        if (game.data.heroes.some((h) => h.status === 'injured' || (h.status !== 'dead' && fatigueNow(h, now) > 0))) this.render();
       },
     });
   }

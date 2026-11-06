@@ -11,7 +11,7 @@ import { generateHero, heroToUnit, type Hero } from '../src/data/heroes';
 const N = Number(process.argv[2] ?? 500);
 const ctx = () => ({ names: new Set<string>(), looks: new Set<string>() });
 
-/** 레벨 f에서 f층을 깨면 딱 1레벨 오르도록 경험치가 짜여 있음 → f층 도전 시 레벨 f */
+/** 기준: f층 도전 시 레벨 f (첫 클리어만으로는 조금 모자라고, 클리어한 층 반복으로 맞춤) */
 const levelFor = (floor: number) => floor;
 
 const LINEUP: ClassId[] = ['knight', 'warrior', 'priest', 'archer', 'mage'];
@@ -58,3 +58,21 @@ function run(label: string, party: (floor: number, i: number) => UnitInit[]): vo
 run('최저선 (전원 인간, 특성 없음)', (f) => baseline(levelFor(f), f));
 const rng = new Rng(12345);
 run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), f, rng));
+
+// 3) 던전 (GDD 6): 던전 n층 = 탑 n층 수준 적. 레벨 = 층
+import { DUNGEONS, DUNGEON_FLOORS, DUNGEON_IDS, buildDungeonEnemies, dungeonLineup } from '../src/data/dungeons';
+console.log(`\n[던전 · 무작위 영웅, 레벨 = 층] 판수 ${N}`);
+for (const id of DUNGEON_IDS) {
+  const row: string[] = [];
+  for (let f = 1; f <= DUNGEON_FLOORS; f++) {
+    let wins = 0;
+    const r2 = new Rng(999 + f);
+    for (let i = 0; i < N; i++) {
+      const b = new Battle(randomParty(f, f, r2), buildDungeonEnemies(id, f), i * 104729 + f);
+      if (b.runToEnd() === 'win') wins++;
+    }
+    row.push(`${f}:${Math.round((wins / N) * 100)}%`);
+  }
+  console.log(`${DUNGEONS[id].name}  ${row.join(' ')}`);
+  if (process.argv.includes('--lineup')) for (let f = 1; f <= DUNGEON_FLOORS; f++) console.log(`  ${f}층 ${dungeonLineup(id, f).join(', ')}`);
+}

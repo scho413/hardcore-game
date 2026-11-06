@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import type { Hero } from '../data/heroes';
-import { FACE_CROP, heroGrid, type Grid } from './heroArt';
+import { GRADES, WEAPON_TYPES } from '../data/items';
+import { FACE_CROP, heroGrid, lookSignature, type Grid, type HeldWeapon } from './heroArt';
 
 function paint(ctx: CanvasRenderingContext2D, grid: Grid, ox = 0, oy = 0, w = grid[0].length, h = grid.length): void {
   for (let y = 0; y < h; y++) {
@@ -21,12 +22,25 @@ export function makeGridTexture(scene: Phaser.Scene, key: string, grid: Grid): v
   tex.refresh();
 }
 
-/** `hero-<id>` (전신)과 `face-<id>` (얼굴 아이콘) 텍스처를 준비. 외형은 바뀌지 않으므로 한 번만 만듦 */
+export function heldWeapon(hero: Hero): HeldWeapon | undefined {
+  const w = hero.weapon;
+  if (!w) return undefined;
+  return { art: WEAPON_TYPES[w.cls].art, color: `#${GRADES[w.grade].color.toString(16).padStart(6, '0')}`, glow: w.grade >= 3 };
+}
+
+/** 텍스처를 만들 때의 외형·무기. 바뀌면 다시 그림 (무기 장착, 새 게임에서 같은 id 재사용) */
+const made = new Map<string, string>();
+
+/** `hero-<id>` (전신)과 `face-<id>` (얼굴 아이콘) 텍스처를 준비 */
 export function ensureHeroTextures(scene: Phaser.Scene, hero: Hero): void {
   const body = `hero-${hero.id}`;
   const face = `face-${hero.id}`;
-  if (scene.textures.exists(body) && scene.textures.exists(face)) return;
-  const grid = heroGrid(hero);
+  const sig = `${lookSignature(hero.race, hero.beast, hero.classId, hero.look)}|${hero.weapon?.id ?? ''}`;
+  if (made.get(hero.id) === sig && scene.textures.exists(body) && scene.textures.exists(face)) return;
+  if (scene.textures.exists(body)) scene.textures.remove(body);
+  if (scene.textures.exists(face)) scene.textures.remove(face);
+  made.set(hero.id, sig);
+  const grid = heroGrid({ ...hero, held: heldWeapon(hero) });
   makeGridTexture(scene, body, grid);
   const [x, y, w, h] = FACE_CROP;
   const tex = scene.textures.createCanvas(face, w, h);

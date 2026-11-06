@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { ensureHeroTextures } from '../art/textures';
 import { CLASSES, roleOf } from '../data/classes';
-import { heroRace, xpToNext, type Hero } from '../data/heroes';
+import { FATIGUE_MAX, FATIGUE_PENALTY, fatigueLevel, fatigueNextMs, heroRace, xpToNext, type Hero } from '../data/heroes';
 import { TRAITS, traitName } from '../data/traits';
 import { C, textStyle } from './theme';
 import { chip, panel } from './widgets';
@@ -15,7 +15,16 @@ export function fmtTime(ms: number): string {
 export function statusLine(h: Hero, now = Date.now()): { text: string; color: string } {
   if (h.status === 'dead') return { text: `${h.diedFloor}층에서 사망`, color: C.redStr };
   if (h.status === 'injured') return { text: `중상 ${fmtTime((h.injuredUntil ?? now) - now)}`, color: '#ff9a4a' };
+  const f = fatigueLevel(h, now);
+  if (f > 0) return { text: `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} -${Math.round(f * FATIGUE_PENALTY * 100)}%`, color: FATIGUE_MAX - f < 5 ? '#ff9a4a' : C.goldStr };
   return { text: '출전 가능', color: C.greenStr };
+}
+
+/** 기력 상세: "기력 6/10 · 능력치 -12% · 3:12 후 1 회복" (내부 값은 피로 = 10 - 기력) */
+export function fatigueDetail(h: Hero, now = Date.now()): string {
+  const f = fatigueLevel(h, now);
+  if (f <= 0) return `기력 ${FATIGUE_MAX}/${FATIGUE_MAX} · 가득`;
+  return `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} · 능력치 -${Math.round(f * FATIGUE_PENALTY * 100)}% · ${fmtTime(fatigueNextMs(h, now))} 후 +1`;
 }
 
 const MARK = { good: '+', bad: '-', mixed: '±' } as const;

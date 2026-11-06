@@ -75,6 +75,7 @@ const CLOTH_BY_RACE: Record<string, number[]> = {
 const FURS = ['#8a5a3a', '#6a5a4a', '#b8905a', '#4a3a30', '#d8c8b0'];
 
 const METAL = '#b8c2d4';
+const METAL_BASE = METAL;
 const METAL_D = '#7d88a3';
 const WOOD = '#8b6a3e';
 const WOOD_D = '#5c4428';
@@ -249,8 +250,19 @@ function layout(race: RaceId, beast: BeastKind | undefined, gender: Gender): Lay
 
 // ─────────────── 본체 ───────────────
 
+/** 대장간에서 만든 무기를 들었을 때: 모양과 등급 색 */
+export interface HeldWeapon {
+  art: string;
+  /** 등급 색 (금속 부분) */
+  color: string;
+  /** 영웅·전설 등급은 빛남 */
+  glow: boolean;
+}
+
 export interface HeroLike {
   gender?: Gender;
+  /** 장착 무기 (없으면 기본 무기) */
+  held?: HeldWeapon;
   race: RaceId;
   beast?: BeastKind;
   classId: ClassId;
@@ -278,7 +290,7 @@ export function heroGrid(h: HeroLike): Grid {
   drawBack(c, style, h.classId, L, p);
   drawLegs(c, style, h.classId, L, p);
   drawBody(c, style, h.classId, L, p);
-  drawWeapon(c, style, h.classId, l.weapon, L, C1, C2, l.eyeColor);
+  drawWeapon(c, style, h.classId, h.held?.art ?? l.weapon, L, C1, C2, l.eyeColor, h.held);
   drawHead(c, L, S, Sd);
   if (!beast) drawEars(c, h.race, L, S, Sd);
   if (beast && h.beast === 'dog') drawBeastEars(c, 'dog', L, S, l.earVar);
@@ -511,12 +523,15 @@ function drawBody(c: Canvas, style: Style, cls: ClassId, L: Layout, p: Paint): v
   c.rect(bx1 + 1, armBot + 1, 2, 1, S);
 }
 
-function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: Layout, C1: string, C2: string, eyeColor: number): void {
+function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: Layout, C1: string, C2: string, eyeColor: number, held?: HeldWeapon): void {
   const hx = L.bx1 + 3; // 오른손 옆
   const hy = L.by1;
+  // 만든 무기: 금속 부분을 등급 색으로
+  const METAL = held?.color ?? METAL_BASE;
+  const BLADE = held ? shade(held.color, 1.35) : '#e8eef8';
   switch (weapon) {
     case 'sword':
-      c.rect(hx, hy - 12, 1, 11, '#e8eef8');
+      c.rect(hx, hy - 12, 1, 11, BLADE);
       c.rect(hx + 1, hy - 12, 1, 11, METAL);
       c.rect(hx - 1, hy - 1, 4, 1, GOLD);
       c.rect(hx, hy, 2, 2, WOOD_D);
@@ -534,7 +549,7 @@ function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: La
       break;
     case 'greatsword':
       c.rect(hx, hy - 15, 2, 14, METAL);
-      c.rect(hx, hy - 15, 1, 14, '#e8eef8');
+      c.rect(hx, hy - 15, 1, 14, BLADE);
       c.rect(hx - 1, hy - 1, 4, 1, METAL_D);
       c.rect(hx, hy, 2, 2, WOOD_D);
       break;
@@ -555,12 +570,17 @@ function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: La
         const bx = x - (d < (bot - top) / 3 ? 1 : 0);
         c.px(bx, y, WOOD);
       }
-      for (let y = top + 1; y < bot; y++) c.px(x + 1, y, '#e8e0c8');
+      for (let y = top + 1; y < bot; y++) c.px(x + 1, y, held ? shade(held.color, 1.3) : '#e8e0c8');
+      if (held) {
+        c.px(x - 1, mid, held.color);
+        c.px(x, top, held.color);
+        c.px(x, bot, held.color);
+      }
       break;
     }
     case 'staff':
     case 'wand': {
-      const orb = EYE_COLORS[eyeColor % EYE_COLORS.length];
+      const orb = held?.color ?? EYE_COLORS[eyeColor % EYE_COLORS.length];
       const long = weapon === 'staff';
       const top = long ? L.hy0 + 2 : hy - 7;
       c.rect(hx, top + 3, 1, hy + 3 - top, WOOD);
@@ -571,7 +591,7 @@ function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: La
     }
     case 'holystaff':
       c.rect(hx, L.hy0 + 4, 1, L.ly1 - L.hy0 - 3, GOLD_D);
-      c.rect(hx - 1, L.hy0 + 1, 3, 3, GOLD);
+      c.rect(hx - 1, L.hy0 + 1, 3, 3, held?.color ?? GOLD);
       c.px(hx, L.hy0 + 2, '#fff6d0');
       break;
     case 'crossbow':
@@ -602,6 +622,11 @@ function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: La
       c.rect(L.bx0 - 5, L.by1 - 3, 4, 1, GOLD);
       c.px(L.bx0 - 3, L.by1 - 1, GOLD);
       break;
+  }
+  if (held?.glow) {
+    // 영웅·전설: 반짝임
+    c.px(hx + 2, L.by0 - 6, '#ffffff');
+    c.px(hx - 2, L.by0 - 2, shade(held.color, 1.5));
   }
   if (cls === 'knight' && style === 'barbarian') {
     // 둥근 나무 방패
