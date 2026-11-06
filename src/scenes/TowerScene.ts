@@ -45,12 +45,21 @@ export class TowerScene extends Phaser.Scene {
     // 헤더
     add(this.add.text(40, TOP + 44 + OY / 3, '탑', textStyle(55, C.goldStr)));
     add(this.add.text(120, TOP + 64 + OY / 3, '1단계 프로토타입 · 10층', textStyle(22, C.dim)));
-    add(
+    // 확인 대화상자 대신 두 번 탭 (웹뷰/미리보기에서 confirm()이 막히는 경우 대비)
+    let armed = false;
+    const reset = add(
       button(this, W - 110, TOP + 72 + OY / 3, 160, 52, '처음부터', () => {
-        if (window.confirm('진행 상황을 지우고 1층부터 다시 시작할까요?')) {
-          resetProgress();
-          this.render();
+        if (!armed) {
+          armed = true;
+          reset.setLabel('한 번 더 탭');
+          this.time.delayedCall(2500, () => {
+            armed = false;
+            if (reset.active) reset.setLabel('처음부터');
+          });
+          return;
         }
+        resetProgress();
+        this.render();
       }, { fill: C.panelHi, textColor: C.dim, size: 22 }),
     );
 
