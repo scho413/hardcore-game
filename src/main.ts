@@ -3,6 +3,8 @@ import fontUrl from 'galmuri/dist/Galmuri11-Bold.woff2?url';
 import { BootScene } from './scenes/BootScene';
 import { TowerScene } from './scenes/TowerScene';
 import { BattleScene } from './scenes/BattleScene';
+import { CodexScene } from './scenes/CodexScene';
+import { HeroesScene } from './scenes/HeroesScene';
 import { C, FONT, H, W } from './ui/theme';
 
 async function loadFont(): Promise<void> {
@@ -27,6 +29,6 @@ loadFont().then(() => {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [BootScene, TowerScene, BattleScene],
+    scene: [BootScene, TowerScene, HeroesScene, CodexScene, BattleScene],
   });
 });

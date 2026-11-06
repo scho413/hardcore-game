@@ -2,10 +2,14 @@ import Phaser from 'phaser';
 import { Battle, GAUGE_MAX } from '../battle/engine';
 import { randomSeed } from '../battle/rng';
 import type { ActionResult, Hit, Unit } from '../battle/types';
+import { ensureHeroTextures } from '../art/textures';
 import { FLOORS, TOP_FLOOR, buildEnemies } from '../data/floors';
-import { buildAllies } from '../data/party';
-import { game, save } from '../state';
-import { BASE_H, BOTTOM, C, ELEMENT_INFO, OY, TOP, W, textStyle } from '../ui/theme';
+import { heroToUnit } from '../data/heroes';
+import { applyBattleResult, type HeroReport } from '../progress';
+import { game, readyFormation, save } from '../state';
+import { fmtTime } from '../ui/heroUi';
+import { FAMILIES, type Family } from '../data/races';
+import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -29,8 +33,7 @@ const SPEED_KEY = 'hardcore-game/speed';
 
 // 화면 배치: 위쪽 적, 아래쪽 아군 (GDD 4)
 const ENEMY_Y = { back: 300, front: 490 } as const;
-const ALLY_Y = { front: 790, mid: 935, back: 1080 } as const;
-const ALLY_X = { front: [230, 490], mid: [360], back: [230, 490] } as const;
+const ALLY_Y = { front: 770, mid: 925, back: 1080 } as const;
 
 function spread(n: number): number[] {
   if (n === 1) return [W / 2];
@@ -47,6 +50,7 @@ export class BattleScene extends Phaser.Scene {
   private logText!: Phaser.GameObjects.Text;
   private running = false;
   private enrageShown = false;
+  private reports: HeroReport[] = [];
 
   constructor() {
     super('battle');
@@ -69,7 +73,20 @@ export class BattleScene extends Phaser.Scene {
     this.events.once('shutdown', () => (this.running = false));
     this.applySpeed();
 
-    this.battle = new Battle(buildAllies(game.data.party), buildEnemies(this.floor), randomSeed());
+    const team = readyFormation();
+    for (const t of team) ensureHeroTextures(this, t.hero);
+    const allies = team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor }));
+    const enemies = buildEnemies(this.floor);
+    const seed = randomSeed();
+
+    // 결과를 먼저 확정해서 저장 (전투는 시드로 결정되므로 화면과 결과가 같음).
+    // 패배가 보일 때 앱을 꺼서 사망을 피하는 것을 막기 위함.
+    const verdict = new Battle(allies, enemies, seed);
+    const outcome = verdict.runToEnd();
+    this.reports = applyBattleResult(game.data, this.floor, outcome, verdict.units);
+    save();
+
+    this.battle = new Battle(allies, enemies, seed);
 
     this.drawBackground();
     this.drawHeader();
@@ -130,8 +147,14 @@ export class BattleScene extends Phaser.Scene {
     }
 
     const effect = r.skill.effect.kind;
-    if (effect === 'taunt') {
+    if (r.cowered) {
+      this.floatText(actor, '겁에 질림…', '#c8b0ff', 22);
+      await this.tween({ targets: actor.sprite, x: { from: -6, to: 6 }, duration: 60, yoyo: true, repeat: 3 });
+      actor.sprite.x = 0;
+    } else if (effect === 'taunt') {
       await this.playTaunt(actor);
+    } else if (effect === 'buff') {
+      await this.playBuff(r);
     } else if (effect === 'heal') {
       await Promise.all(r.hits.map((h) => this.projectile(actor, this.views.get(h.targetId)!, 'holy').then(() => this.applyHit(h))));
     } else if (r.skill.projectile === 'none') {
@@ -140,6 +163,19 @@ export class BattleScene extends Phaser.Scene {
     } else {
       await this.playRanged(actor, r);
     }
+  }
+
+  private async playBuff(r: ActionResult): Promise<void> {
+    const targets = r.targetIds.map((id) => this.views.get(id)!);
+    const label = r.status?.label ?? '강화';
+    await Promise.all(
+      targets.map(async (t) => {
+        const ring = this.add.circle(t.root.x, t.root.y, t.size * 0.45, 0xffd36a, 0).setStrokeStyle(4, 0xffd36a, 1).setDepth(20);
+        this.floatText(t, label, C.goldStr, 18);
+        await this.tween({ targets: ring, scale: 1.6, alpha: 0, duration: 380, ease: 'Quad.easeOut' });
+        ring.destroy();
+      }),
+    );
   }
 
   private async playMelee(actor: View, target: View, r: ActionResult): Promise<void> {
@@ -173,7 +209,7 @@ export class BattleScene extends Phaser.Scene {
       const sameBefore = r.hits.slice(0, i).filter((x) => x.targetId === h.targetId).length;
       return this.wait(sameBefore * 110).then(async () => {
         if (!this.running) return;
-        await this.projectile(actor, this.views.get(h.targetId)!, r.skill.projectile, actor.unit.element);
+        await this.projectile(actor, this.views.get(h.targetId)!, r.skill.projectile);
         if (r.skill.big && sameBefore === 0) this.cameras.main.shake(120, 0.005);
         this.applyHit(h);
       });
@@ -191,7 +227,8 @@ export class BattleScene extends Phaser.Scene {
 
   // ───────────────────────── 이펙트 ─────────────────────────
 
-  private projectile(from: View, to: View, kind: string, element = from.unit.element): Promise<void> {
+  private projectile(from: View, to: View, kind: string): Promise<void> {
+    const fx = from.unit.fxColor ?? 0xb07aff;
     const sx = from.root.x;
     const sy = from.root.y - from.size * 0.2;
     const ex = to.root.x;
@@ -202,12 +239,12 @@ export class BattleScene extends Phaser.Scene {
     } else if (kind === 'holy') {
       obj = this.add.circle(sx, sy, 10, 0xffe68a).setStrokeStyle(4, 0xfff6d0, 0.6);
     } else {
-      const col = ELEMENT_INFO[element].color;
+      const col = fx;
       obj = this.add.circle(sx, sy, 13, col).setStrokeStyle(5, 0xffffff, 0.5);
     }
     obj.setDepth(20);
     return this.tween({ targets: obj, x: ex, y: ey, duration: kind === 'arrow' ? 160 : 240, ease: kind === 'arrow' ? 'Linear' : 'Sine.easeIn' }).then(() => {
-      this.burst(ex, ey, kind === 'holy' ? 0x9fffb0 : kind === 'arrow' ? 0xe8dcc0 : ELEMENT_INFO[element].color);
+      this.burst(ex, ey, kind === 'holy' ? 0x9fffb0 : kind === 'arrow' ? 0xe8dcc0 : fx);
       obj.destroy();
     });
   }
@@ -236,6 +273,15 @@ export class BattleScene extends Phaser.Scene {
       this.animateHp(v);
       return;
     }
+    if (h.missed) {
+      this.floatText(v, '빗나감', C.dim, 22);
+      return;
+    }
+    if (h.dodged) {
+      this.floatText(v, '회피', '#9fd0ff', 33);
+      this.tweens.add({ targets: v.sprite, x: { from: 18, to: 0 }, duration: 220, ease: 'Quad.easeOut' });
+      return;
+    }
     // 피격 반짝임 + 흔들림
     v.sprite.setTintFill(0xffffff);
     this.time.delayedCall(70, () => {
@@ -247,12 +293,11 @@ export class BattleScene extends Phaser.Scene {
     this.tweens.add({ targets: v.sprite, x: { from: -9, to: 0 }, duration: 160, ease: 'Bounce.easeOut' });
 
     const base = v.unit.side === 'ally' ? '#ff8a7a' : '#ffffff';
-    const color = h.elem === 'adv' ? '#ffb347' : h.elem === 'dis' ? C.dim : base;
+    const color = h.favored ? '#ffb347' : base;
     const size = h.crit ? 44 : 33;
     this.floatText(v, `${h.amount}`, color, size);
     if (h.crit) this.floatText(v, '치명!', C.goldStr, 22, -46);
-    else if (h.elem === 'adv') this.floatText(v, '약점', '#ffb347', 18, -40);
-    else if (h.elem === 'dis') this.floatText(v, '저항', C.dim, 18, -40);
+    else if (h.favored) this.floatText(v, '천적!', '#ffb347', 18, -40);
 
     this.animateHp(v);
     if (h.downed) this.playDown(v);
@@ -357,19 +402,22 @@ export class BattleScene extends Phaser.Scene {
       x = spread(sameRow.length)[u.slot];
       y = ENEMY_Y[u.row as 'front' | 'back'];
     } else {
-      x = ALLY_X[u.row][u.slot];
+      const sameRow = this.battle.units.filter((o) => o.side === 'ally' && o.row === u.row).length;
+      x = (sameRow === 2 ? [230, 490] : spread(sameRow))[u.slot];
       y = ALLY_Y[u.row];
     }
-    const scale = u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
-    const size = 16 * scale;
+    const isHero = !!u.texture?.startsWith('hero-');
+    const scale = isHero ? 3 : u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
+    const size = (isHero ? 32 : 16) * scale;
     const barW = u.boss ? 220 : 116;
 
     const shadow = this.add.ellipse(0, size / 2 - 4, size * 0.7, size * 0.16, 0x000000, 0.35);
-    const sprite = this.add.image(0, 0, `unit-${u.kind}`).setScale(scale);
+    const sprite = this.add.image(0, 0, u.texture ?? `unit-${u.kind}`).setScale(scale);
     const nameY = -size / 2 - 18;
     const label = u.side === 'ally' ? `${u.name} Lv${u.level}` : u.name;
-    const name = this.add.text(8, nameY, label, textStyle(18, u.boss ? C.redStr : C.text, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
-    const dot = this.add.circle(name.x - name.width / 2 - 10, nameY, 7, ELEMENT_INFO[u.element].color).setStrokeStyle(2, 0x14111c);
+    const name = this.add.text(u.side === 'enemy' ? 8 : 0, nameY, label, textStyle(18, u.boss ? C.redStr : C.text, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
+    const famColor = u.family ? FAMILIES[u.family as Family].color : 0x9d93b0;
+    const dot = this.add.circle(name.x - name.width / 2 - 10, nameY, 7, famColor).setStrokeStyle(2, 0x14111c).setVisible(u.side === 'enemy');
     const hp = this.add.graphics();
     const gauge = this.add.graphics();
     const taunt = this.add.text(0, nameY - 26, '도발', textStyle(18, '#9fd0ff', { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5).setVisible(false);
@@ -412,15 +460,20 @@ export class BattleScene extends Phaser.Scene {
   private refreshStatus(): void {
     for (const v of this.views.values()) {
       this.drawGauge(v);
-      v.taunt.setVisible(!v.unit.down && v.unit.tauntTurns > 0);
-      if (v.taunt.visible) v.sprite.setTint(0xbfdcff);
+      const taunt = !v.unit.down && v.unit.tauntTurns > 0;
+      const buff = !v.unit.down && !!v.unit.atkBuff;
+      v.taunt.setVisible(taunt || buff);
+      v.taunt.setText(taunt ? '도발' : '공격↑').setColor(taunt ? '#9fd0ff' : C.goldStr);
+      if (taunt) v.sprite.setTint(0xbfdcff);
       else if (!v.unit.down && v.unit.side === 'ally') v.sprite.clearTint();
     }
   }
 
   private describe(r: ActionResult): string {
     const a = this.battle.unit(r.actorId).name;
+    if (r.cowered) return `${a}이(가) 겁에 질려 움직이지 못한다`;
     if (r.skill.effect.kind === 'taunt') return `${a}의 도발! 적의 공격을 끌어당긴다`;
+    if (r.skill.effect.kind === 'buff') return `${a}의 ${r.skill.name} · ${r.status?.label ?? ''}`;
     if (r.skill.effect.kind === 'heal') {
       const total = r.hits.reduce((s, h) => s + h.amount, 0);
       return `${a}의 ${r.skill.name} · ${total} 회복`;
@@ -435,49 +488,64 @@ export class BattleScene extends Phaser.Scene {
 
   private showResult(outcome: 'win' | 'lose'): void {
     this.applySpeedReset();
-    const fallen = this.battle.units.filter((u) => u.side === 'ally' && u.down).length;
-    const d = game.data;
-    let title: string;
-    let lines: string[];
-
-    if (outcome === 'win') {
-      const firstClear = this.floor > d.cleared;
-      if (firstClear) {
-        d.cleared = this.floor;
-        for (const h of d.party) h.level++;
-      }
-      title = this.floor === TOP_FLOOR ? '탑 정복!' : '승리!';
-      lines = [
-        `행동 ${this.battle.turn}회 · 쓰러진 영웅 ${fallen}명`,
-        firstClear ? `파티 레벨 업 → Lv ${d.party[0].level}` : '',
-        fallen > 0 ? '(2단계부터 쓰러진 영웅은 중상)' : '',
-      ];
-    } else {
-      d.defeats++;
-      title = '패배';
-      lines = [`행동 ${this.battle.turn}회 · 파티 전멸`, '(2단계부터 패배 시 쓰러진 영웅은 사망)', '진형을 바꿔서 다시 도전해 보세요'];
-    }
-    save();
+    const deaths = this.reports.filter((r) => r.fate === 'dead').length;
+    const injured = this.reports.filter((r) => r.fate === 'injured').length;
+    const win = outcome === 'win';
+    const title = win ? (this.floor === TOP_FLOOR ? '탑 정복!' : '승리!') : '전멸';
+    const summary = win
+      ? injured > 0 ? `${this.floor}층 클리어 · 중상 ${injured}명` : `${this.floor}층 클리어 · 전원 무사`
+      : deaths > 0 ? `${deaths}명이 돌아오지 못했습니다` : `${this.floor}층 실패`;
 
     const shade = this.add.rectangle(W / 2, BASE_H / 2, W, BOTTOM - TOP, 0x0b0910, 0).setDepth(50).setInteractive();
-    this.tweens.add({ targets: shade, fillAlpha: 0.7, duration: 250 });
-    const box = this.add.container(W / 2, BASE_H / 2).setDepth(51).setAlpha(0);
-    box.add(panel(this, -300, -210, 600, 420, C.panel, outcome === 'win' ? C.gold : C.red));
-    box.add(this.add.text(0, -140, title, textStyle(66, outcome === 'win' ? C.goldStr : C.redStr)).setOrigin(0.5));
-    lines.filter(Boolean).forEach((l, i) => box.add(this.add.text(0, -56 + i * 40, l, textStyle(i === 0 ? 22 : 18, i === 0 ? C.text : C.dim)).setOrigin(0.5)));
+    this.tweens.add({ targets: shade, fillAlpha: win ? 0.7 : 0.85, duration: 300 });
 
-    const toTower = () => this.leave('tower', {});
-    if (outcome === 'win') {
-      box.add(button(this, 0, 130, 440, 88, this.floor === TOP_FLOOR ? '탑으로' : '다음 층 준비', toTower, { size: 33 }));
+    const rowH = (r: HeroReport) => (r.notes.length ? 94 : 66);
+    const ph = 300 + this.reports.reduce((a, r) => a + rowH(r), 0);
+    const box = this.add.container(W / 2, BASE_H / 2).setDepth(51).setAlpha(0);
+    box.add(panel(this, -310, -ph / 2, 620, ph, C.panel, win ? C.gold : C.red));
+    box.add(this.add.text(0, -ph / 2 + 64, title, textStyle(66, win ? C.goldStr : C.redStr)).setOrigin(0.5));
+    box.add(this.add.text(0, -ph / 2 + 124, summary, textStyle(22, C.text)).setOrigin(0.5));
+
+    let y = -ph / 2 + 176;
+    this.reports.forEach((r) => {
+      const dead = r.fate === 'dead';
+      const face = this.add.image(-250, y + 26, `face-${r.hero.id}`).setScale(2.5);
+      if (dead) face.setTint(0x6a6070);
+      box.add(face);
+      box.add(this.add.text(-200, y + 8, r.hero.name, textStyle(22, dead ? C.faint : C.text)));
+      let text: string;
+      let color: string;
+      if (r.fate === 'dead') {
+        text = '사망';
+        color = C.redStr;
+      } else if (r.fate === 'injured') {
+        text = `중상 · ${fmtTime((r.hero.injuredUntil ?? 0) - Date.now())} 후 회복`;
+        color = '#ff9a4a';
+      } else if (r.levelAfter > r.levelBefore) {
+        text = `Lv ${r.levelBefore} → ${r.levelAfter}`;
+        color = C.goldStr;
+      } else {
+        text = win ? `Lv ${r.levelAfter} · 경험치 획득` : '생존';
+        color = C.dim;
+      }
+      if (r.fate === 'injured' && r.levelAfter > r.levelBefore) text = `Lv ${r.levelAfter} · ${text}`;
+      box.add(this.add.text(270, y + 10, text, textStyle(r.fate === 'dead' ? 22 : 18, color)).setOrigin(1, 0));
+      if (r.notes.length) {
+        const n = r.notes[0];
+        const more = r.notes.length > 1 ? ` 외 ${r.notes.length - 1}` : '';
+        box.add(this.add.text(-200, y + 42, `${n.text}${more}`, textStyle(18, n.tone === 'good' ? '#8fe0a0' : '#ff9a7a')));
+      }
+      y += rowH(r);
+    });
+
+    const by = ph / 2 - 62;
+    if (win) {
+      box.add(button(this, 0, by, 440, 84, '귀환', () => this.leave('tower', {}), { size: 33 }));
     } else {
-      box.add(button(this, -110, 130, 200, 88, '탑으로', toTower, { fill: C.panelHi, textColor: C.text, size: 33 }));
-      box.add(button(this, 110, 130, 200, 88, '재도전', () => {
-        d.attempts++;
-        save();
-        this.leave('battle', { floor: this.floor });
-      }, { size: 33 }));
+      box.add(button(this, -125, by, 220, 84, '탑으로', () => this.leave('tower', {}), { fill: C.panelHi, textColor: C.text, size: 22 }));
+      box.add(button(this, 125, by, 220, 84, deaths > 0 ? '추모의 벽' : '영웅 목록', () => this.leave(deaths > 0 ? 'codex' : 'heroes', {}), { size: 22 }));
     }
-    this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 260, ease: 'Back.easeOut' });
+    this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 320, ease: 'Back.easeOut' });
   }
 
   /** 결과 창 연출은 배속과 무관하게 */
