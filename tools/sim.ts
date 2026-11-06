@@ -16,7 +16,7 @@ const levelFor = (floor: number) => floor;
 
 const LINEUP: ClassId[] = ['knight', 'warrior', 'priest', 'archer', 'mage'];
 
-function baseline(level: number): UnitInit[] {
+function baseline(level: number, floor: number): UnitInit[] {
   return LINEUP.map((classId, i) => {
     const h: Hero = {
       ...generateHero(() => 0.5, `b${i}`, ctx(), { classId, race: 'human', now: 0 }),
@@ -24,13 +24,13 @@ function baseline(level: number): UnitInit[] {
       statMul: { hp: 1, atk: 1, def: 1, spd: 1 },
       level,
     };
-    return heroToUnit(h, i);
+    return heroToUnit(h, i, { formation: 'basic', floor });
   });
 }
 
-function randomParty(level: number, rng: Rng): UnitInit[] {
-  // 직업은 기준 진형대로, 나머지(속성·특성·개체값)만 무작위
-  return LINEUP.map((classId, i) => heroToUnit({ ...generateHero(() => rng.next(), `r${i}`, ctx(), { classId, now: 0 }), level }, i));
+function randomParty(level: number, floor: number, rng: Rng): UnitInit[] {
+  // 직업은 기준 진형대로, 나머지(종족·특성·개체값)만 무작위
+  return LINEUP.map((classId, i) => heroToUnit({ ...generateHero(() => rng.next(), `r${i}`, ctx(), { classId, now: 0 }), level }, i, { formation: 'basic', floor }));
 }
 
 function run(label: string, party: (floor: number, i: number) => UnitInit[]): void {
@@ -55,6 +55,6 @@ function run(label: string, party: (floor: number, i: number) => UnitInit[]): vo
   }
 }
 
-run('기준 파티', (f) => baseline(levelFor(f)));
+run('최저선 (전원 인간, 특성 없음)', (f) => baseline(levelFor(f), f));
 const rng = new Rng(12345);
-run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), rng));
+run('무작위 영웅 (직업 고정)', (f) => randomParty(levelFor(f), f, rng));

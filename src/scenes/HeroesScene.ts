@@ -1,9 +1,11 @@
 import { ensureHeroTextures } from '../art/textures';
-import { CLASSES } from '../data/classes';
-import { FORMATION_SLOTS, ROSTER_MAX, heroRace, heroStats, xpToNext, type Hero } from '../data/heroes';
-import { TRAITS } from '../data/traits';
+import { CLASSES, roleOf } from '../data/classes';
+import { ROSTER_MAX, heroRace, heroStats, xpToNext, type Hero } from '../data/heroes';
+import { slotPosition } from '../data/formations';
+import { TRAITS, TRAIT_MAX, traitDesc, traitName } from '../data/traits';
+import { drawChronicle } from '../ui/chronicle';
 import { game, living, recruit, resetProgress, save } from '../state';
-import { heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
+import { TRAIT_COLOR, classRole, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { Page } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
@@ -15,6 +17,8 @@ const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
 export class HeroesScene extends Page {
   protected tab = 'heroes' as const;
   private detail: string | null = null;
+  /** 일대기 창 페이지 (null = 닫힘) */
+  private chronPage: number | null = null;
   private resetArmed = false;
   private flash = '';
 
@@ -24,6 +28,7 @@ export class HeroesScene extends Page {
 
   protected onEnter(): void {
     this.detail = null;
+    this.chronPage = null;
     this.resetArmed = false;
     this.flash = '';
   }
@@ -66,11 +71,12 @@ export class HeroesScene extends Page {
       const x = 28 + (i % 2) * (cw + 14);
       const y = 196 + Math.floor(i / 2) * (ch + 12);
       const slot = game.data.formation.indexOf(h.id);
-      const note = slot >= 0 && h.status === 'ready' ? { text: `${ROW_LABEL[FORMATION_SLOTS[slot].row]} 배치`, color: C.goldStr } : statusLine(h);
+      const note = slot >= 0 && h.status === 'ready' ? { text: `${ROW_LABEL[slotPosition(game.data.formationType, slot).row]} 배치`, color: C.goldStr } : statusLine(h);
       heroCard(this, x, y, cw, ch, h, {
         note,
         onTap: () => {
           this.detail = h.id;
+          this.chronPage = null;
           this.requestRender();
         },
       });
@@ -88,30 +94,33 @@ export class HeroesScene extends Page {
       this.detail = null;
       this.requestRender();
     };
+    if (this.chronPage !== null) {
+      drawChronicle(this, h, this.chronPage, (p) => ((this.chronPage = p), this.requestRender()), () => ((this.chronPage = null), this.requestRender()));
+      return;
+    }
     shade(this, PAGE_TOP, PAGE_BOTTOM - PAGE_TOP, close);
-    const x = 40;
-    const y = 150;
-    const w = W - 80;
-    const ht = 900;
+    const x = 28;
+    const y = PAGE_TOP + 30;
+    const w = W - 56;
+    const ht = Math.min(PAGE_BOTTOM - 30, 1250) - y;
     panel(this, x, y, w, ht, C.panel, C.gold);
     this.add.zone(x + w / 2, y + ht / 2, w, ht).setInteractive();
     ensureHeroTextures(this, h);
 
-    const cls = CLASSES[h.classId];
     const frame = this.add.graphics();
-    frame.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 28, y + 28, 200, 200, 10);
-    this.add.image(x + 128, y + 128, `hero-${h.id}`).setScale(6);
+    frame.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 24, y + 24, 200, 200, 10);
+    this.add.image(x + 124, y + 124, `hero-${h.id}`).setScale(6);
 
-    const tx = x + 256;
-    this.add.text(tx, y + 34, h.name, textStyle(44));
-    const ct = this.add.text(tx, y + 96, `${cls.name} · Lv ${h.level}`, textStyle(22, C.dim));
-    raceChip(this, tx + ct.width + 12, y + 108, h, 22);
-    this.add.text(tx, y + 140, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
-    xpBar(this, tx, y + 168, w - 256 - 28, h);
+    const tx = x + 248;
+    this.add.text(tx, y + 28, h.name, textStyle(44));
+    this.add.text(tx, y + 90, `${classRole(h)} · Lv ${h.level}`, textStyle(22, C.dim));
+    raceChip(this, tx, y + 136, h, 18);
+    this.add.text(tx, y + 160, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
+    xpBar(this, tx, y + 186, w - 248 - 24, h);
     const st = statusLine(h);
-    this.add.text(tx, y + 196, st.text, textStyle(22, st.color));
+    this.add.text(tx, y + 200, st.text, textStyle(18, st.color));
 
-    // 능력치
+    // 능력치 (진형 효과 제외)
     const s = heroStats(h);
     const rows: [string, string][] = [
       ['체력', String(s.hp)],
@@ -121,31 +130,51 @@ export class HeroesScene extends Page {
       ['치명타', `${Math.round(s.crit * 100)}%`],
       ['천적', FAMILIES[heroRace(h).favored].name],
     ];
-    const sy = y + 264;
-    this.add.text(x + 28, sy, '능력치', textStyle(22, C.goldStr));
+    const sy = y + 250;
+    this.add.text(x + 24, sy, '능력치', textStyle(22, C.goldStr));
     rows.forEach(([k, v], i) => {
-      const cx = x + 28 + (i % 3) * ((w - 56) / 3);
-      const cy = sy + 44 + Math.floor(i / 3) * 64;
+      const cx = x + 24 + (i % 3) * ((w - 48) / 3);
+      const cy = sy + 38 + Math.floor(i / 3) * 56;
       this.add.text(cx, cy, k, textStyle(18, C.dim));
-      this.add.text(cx, cy + 24, v, textStyle(22));
+      this.add.text(cx, cy + 22, v, textStyle(22));
     });
 
-    const ty = sy + 196;
-    this.add.text(x + 28, ty, '특성', textStyle(22, C.goldStr));
+    // 전투 역할 (GDD 3.4)
+    const ry = sy + 168;
+    this.add.text(x + 24, ry, '전투 역할', textStyle(22, C.goldStr));
+    const roles = CLASSES[h.classId].roles;
+    const bw = (w - 48 - (roles.length - 1) * 10) / roles.length;
+    roles.forEach((role, i) => {
+      const on = role.id === roleOf(h.classId, h.role).id;
+      button(this, x + 24 + bw / 2 + i * (bw + 10), ry + 66, bw, 60, role.name, () => {
+        h.role = role.id;
+        save();
+        this.requestRender();
+      }, { fill: on ? C.gold : C.panelHi, textColor: on ? '#1b1626' : C.text, size: 22 });
+    });
+    this.add.text(x + 24, ry + 108, roleOf(h.classId, h.role).desc, textStyle(18, C.dim));
+
+    // 특성
+    const ty = ry + 156;
+    this.add.text(x + 24, ty, `특성 ${h.traits.length} / ${TRAIT_MAX}`, textStyle(22, C.goldStr));
     const race = heroRace(h);
     const list: [string, string, string][] = [
       [`${race.perk} (종족)`, `${race.desc} · ${FAMILIES[race.favored].name}에게 피해 +25%`, '#9fe0c0'],
-      ...h.traits.map((t): [string, string, string] => [TRAITS[t].name, TRAITS[t].desc, '#c9b8e8']),
+      ...h.traits.map((t): [string, string, string] => [`${traitName(t)} ${TRAITS[t.id].kind === 'good' ? '+' : TRAITS[t.id].kind === 'bad' ? '-' : '±'}${t.v}`, traitDesc(t), TRAIT_COLOR[TRAITS[t.id].kind]]),
     ];
-    list.forEach(([name, desc, color], i) => {
-      this.add.text(x + 28, ty + 44 + i * 64, name, textStyle(22, color));
-      this.add.text(x + 28, ty + 72 + i * 64, desc, textStyle(18, C.dim));
-    });
+    if (h.traits.length === 0) list.push(['특성 없음', '평범한 영웅. 전투를 거치며 특성이 생길 수 있음', C.dim]);
+    let ly = ty + 38;
+    for (const [name, desc, color] of list) {
+      this.add.text(x + 24, ly, name, textStyle(22, color));
+      const d = this.add.text(x + 24, ly + 26, desc, textStyle(18, C.dim, { wordWrap: { width: w - 48 } }));
+      ly += 32 + d.height;
+    }
 
-    const ry = ty + 64 * list.length + 60;
-    this.add.text(x + 28, ry, '기록', textStyle(22, C.goldStr));
-    this.add.text(x + 28, ry + 44, `최고 도달 ${h.bestFloor > 0 ? `${h.bestFloor}층` : '없음'} · 역할: ${cls.role}`, textStyle(18, C.dim));
-
-    button(this, W / 2, y + ht - 60, 300, 76, '닫기', close, { size: 22 });
+    const by = y + ht - 56;
+    button(this, x + w / 2 - 130, by, 240, 72, '일대기', () => {
+      this.chronPage = 0;
+      this.requestRender();
+    }, { fill: C.panelHi, textColor: C.text, size: 22 });
+    button(this, x + w / 2 + 130, by, 240, 72, '닫기', close, { size: 22 });
   }
 }

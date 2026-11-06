@@ -1,8 +1,8 @@
 import Phaser from 'phaser';
 import { ensureHeroTextures } from '../art/textures';
-import { CLASSES } from '../data/classes';
+import { CLASSES, roleOf } from '../data/classes';
 import { heroRace, xpToNext, type Hero } from '../data/heroes';
-import { TRAITS } from '../data/traits';
+import { TRAITS, traitName } from '../data/traits';
 import { C, textStyle } from './theme';
 import { chip, panel } from './widgets';
 
@@ -18,8 +18,19 @@ export function statusLine(h: Hero, now = Date.now()): { text: string; color: st
   return { text: '출전 가능', color: C.greenStr };
 }
 
+const MARK = { good: '+', bad: '-', mixed: '±' } as const;
+
+/** 특성 요약 한 줄: +좋음 -나쁨 ±양면 */
 export function traitNames(h: Hero): string {
-  return h.traits.map((t) => TRAITS[t].name).join(' · ');
+  if (h.traits.length === 0) return '특성 없음';
+  return h.traits.map((t) => `${MARK[TRAITS[t.id].kind]}${traitName(t)}`).join(' ');
+}
+
+export const TRAIT_COLOR = { good: '#8fe0a0', bad: '#ff8a7a', mixed: '#e8c25a' } as const;
+
+/** 직업 · 역할 */
+export function classRole(h: Hero): string {
+  return `${CLASSES[h.classId].name} · ${roleOf(h.classId, h.role).name}`;
 }
 
 /** 경험치 막대 */
@@ -44,21 +55,30 @@ export function heroCard(
   opts: { highlight?: boolean; dim?: boolean; note?: { text: string; color: string }; onTap?: () => void } = {},
 ): void {
   ensureHeroTextures(scene, hero);
-  const cls = CLASSES[hero.classId];
   panel(scene, x, y, w, h, opts.highlight ? C.panelHi : C.panel, opts.highlight ? C.gold : C.line);
-  const img = scene.add.image(x + 50, y + h / 2, `hero-${hero.id}`).setScale(2.5);
-  if (hero.status === 'injured') img.setTint(0x9a8a9a);
-
-  const tx = x + 98;
-  scene.add.text(tx, y + 14, hero.name, textStyle(22));
-  scene.add.text(x + w - 14, y + 16, `Lv ${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
-  const clsText = scene.add.text(tx, y + 46, cls.name, textStyle(18, C.dim));
-  raceChip(scene, tx + clsText.width + 10, y + 56, hero);
-
   const st = opts.note ?? statusLine(hero);
-  const line3 = h >= 140 ? traitNames(hero) : '';
-  if (line3) scene.add.text(tx, y + 76, line3, textStyle(18, '#c9b8e8'));
-  scene.add.text(tx, y + h - 12, st.text, textStyle(18, st.color)).setOrigin(0, 1);
+
+  if (w < 260) {
+    // 좁은 카드 (진형 3명 행)
+    const img = scene.add.image(x + 36, y + h / 2, `hero-${hero.id}`).setScale(2);
+    if (hero.status === 'injured') img.setTint(0x9a8a9a);
+    const tx = x + 70;
+    scene.add.text(tx, y + 10, hero.name, textStyle(18));
+    scene.add.text(x + w - 10, y + 12, `Lv${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
+    scene.add.text(tx, y + 36, classRole(hero), textStyle(18, C.dim));
+    scene.add.text(tx, y + 62, st.text, textStyle(18, st.color));
+  } else {
+    const img = scene.add.image(x + 50, y + h / 2, `hero-${hero.id}`).setScale(2.5);
+    if (hero.status === 'injured') img.setTint(0x9a8a9a);
+    const tx = x + 98;
+    scene.add.text(tx, y + 14, hero.name, textStyle(22));
+    scene.add.text(x + w - 14, y + 16, `Lv ${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
+    const tall = h >= 140;
+    const clsText = scene.add.text(tx, y + (tall ? 46 : 40), classRole(hero), textStyle(18, C.dim));
+    if (tall) raceChip(scene, tx + clsText.width + 10, y + 56, hero);
+    if (tall) scene.add.text(tx, y + 76, traitNames(hero), textStyle(18, '#c9b8e8', { wordWrap: { width: w - 110 } }));
+    scene.add.text(tx, tall ? y + h - 12 : y + 66, st.text, textStyle(18, st.color)).setOrigin(0, tall ? 1 : 0);
+  }
 
   if (opts.dim) scene.add.rectangle(x + w / 2, y + h / 2, w, h, 0x0b0910, 0.55);
   if (opts.onTap) {

@@ -1,7 +1,8 @@
 import { scoutRisk, type Risk } from '../battle/scout';
 import { ensureHeroTextures } from '../art/textures';
-import { FLOORS, TOP_FLOOR, buildEnemies } from '../data/floors';
-import { FORMATION_SLOTS, heroRace, heroToUnit } from '../data/heroes';
+import { FLOORS, TOP_FLOOR, buildEnemies, themeOf } from '../data/floors';
+import { FORMATIONS, FORMATION_IDS, slotPosition } from '../data/formations';
+import { heroRace, heroToUnit } from '../data/heroes';
 import { MONSTERS } from '../data/monsters';
 import { game, heroById, living, readyFormation, save } from '../state';
 import { heroCard, statusLine } from '../ui/heroUi';
@@ -10,8 +11,11 @@ import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, chip, panel } from '../ui/widgets';
 import { FAMILIES } from '../data/races';
 import { shade } from '../ui/heroUi';
+import type { Row } from '../battle/types';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
+const LADDER_ROW = 40;
+const PANEL_H = LADDER_ROW * TOP_FLOOR + 18;
 
 /** 탑 화면: 층 선택 / 정찰 / 진형 편성 / 도전. 층을 클리어하면 무조건 이 화면으로 귀환 (GDD 5.2) */
 export class TowerScene extends Page {
@@ -50,7 +54,7 @@ export class TowerScene extends Page {
   private drawLadder(): void {
     const x = 28;
     const top = 118;
-    const rowH = 46;
+    const rowH = LADDER_ROW;
     panel(this, x - 10, top - 12, 232, rowH * TOP_FLOOR + 18, C.bgDeep);
     for (let i = 0; i < TOP_FLOOR; i++) {
       const floor = TOP_FLOOR - i;
@@ -60,11 +64,11 @@ export class TowerScene extends Page {
       const cleared = floor <= game.data.cleared;
       const sel = floor === this.floor;
       const g = this.add.graphics();
-      g.fillStyle(sel ? C.gold : cleared ? 0x253629 : C.panel, 1).fillRoundedRect(x, y, 212, rowH - 8, 8);
+      g.fillStyle(sel ? C.gold : cleared ? 0x253629 : C.panel, 1).fillRoundedRect(x, y, 212, rowH - 6, 8);
       const color = sel ? '#1b1626' : !open ? C.faint : cleared ? C.greenStr : def.title ? C.redStr : C.text;
-      this.add.text(x + 14, y + 8, `${floor}층`, textStyle(22, color));
+      this.add.text(x + 14, y + (rowH - 6) / 2, `${floor}층`, textStyle(22, color)).setOrigin(0, 0.5);
       const tag = !open ? '잠김' : cleared ? '클리어' : def.title ?? '도전';
-      this.add.text(x + 198, y + 10, tag, textStyle(18, color)).setOrigin(1, 0);
+      this.add.text(x + 198, y + (rowH - 6) / 2, tag, textStyle(18, color)).setOrigin(1, 0.5);
       if (open) {
         this.add
           .zone(x + 106, y + (rowH - 8) / 2, 212, rowH - 8)
@@ -80,10 +84,10 @@ export class TowerScene extends Page {
   private risk(): Risk | null {
     const team = readyFormation();
     if (team.length === 0) return null;
-    const key = `${this.floor}|${team.map((t) => `${t.slot}:${t.hero.id}:${t.hero.level}`).join(',')}`;
+    const key = `${this.floor}|${game.data.formationType}|${team.map((t) => `${t.slot}:${t.hero.id}:${t.hero.level}:${t.hero.role}:${t.hero.traits.length}`).join(',')}`;
     let r = this.riskCache.get(key);
     if (!r) {
-      r = scoutRisk(team.map((t) => heroToUnit(t.hero, t.slot)), buildEnemies(this.floor));
+      r = scoutRisk(team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor })), buildEnemies(this.floor));
       this.riskCache.set(key, r);
     }
     return r;
@@ -94,76 +98,97 @@ export class TowerScene extends Page {
     const x = 262;
     const y = 106;
     const w = W - x - 24;
-    const h = 46 * TOP_FLOOR + 18;
+    const h = PANEL_H;
     panel(this, x, y, w, h);
 
     const def = FLOORS[this.floor - 1];
-    this.add.text(x + 20, y + 16, '정찰', textStyle(18, C.dim));
-    this.add.text(x + 20, y + 42, `${this.floor}층${def.title ? ` · ${def.title}` : ''}`, textStyle(33, def.title ? C.redStr : C.text));
+    this.add.text(x + 20, y + 14, `정찰 · ${themeOf(this.floor)}`, textStyle(18, C.dim));
+    const ft = this.add.text(x + 20, y + 38, `${this.floor}층${def.title ? ` ${def.title}` : ''}`, textStyle(33, def.title ? C.redStr : C.text));
 
     // 처음 도전하는 층은 정보 없음 (GDD 5.2)
     const known = this.floor <= game.data.cleared || game.data.known.includes(this.floor);
+    const rx = Math.max(x + 20 + ft.width + 24, x + 200);
     if (!known) {
-      this.add.text(x + 20, y + 94, '위험도', textStyle(22, C.dim));
-      this.add.text(x + 116, y + 89, '???', textStyle(33, C.faint));
-      this.add.text(x + w / 2, y + 220, '?', textStyle(110, '#3d3352')).setOrigin(0.5);
+      this.add.text(rx, y + 30, '위험도', textStyle(18, C.dim));
+      this.add.text(rx, y + 50, '???', textStyle(22, C.faint));
+      this.add.text(x + w / 2, y + 190, '?', textStyle(110, '#3d3352')).setOrigin(0.5);
       this.add
-        .text(x + w / 2, y + 310, '처음 도전하는 층입니다.\n적 구성과 위험도는\n한 번 도전한 뒤에 알 수 있습니다.', textStyle(18, C.dim, { align: 'center', lineSpacing: 8 }))
+        .text(x + w / 2, y + 270, '처음 도전하는 층입니다.\n적 구성과 위험도는\n한 번 도전한 뒤에 알 수 있습니다.', textStyle(18, C.dim, { align: 'center', lineSpacing: 8 }))
         .setOrigin(0.5, 0);
     } else {
       const risk = this.risk();
-      this.add.text(x + 20, y + 94, '위험도', textStyle(22, C.dim));
-      if (risk) this.add.text(x + 116, y + 89, risk.label, textStyle(33, risk.color));
-      else this.add.text(x + 116, y + 96, '출전할 영웅 없음', textStyle(18, C.faint));
+      this.add.text(rx, y + 30, '위험도', textStyle(18, C.dim));
+      if (risk) this.add.text(rx, y + 50, risk.label, textStyle(22, risk.color));
+      else this.add.text(rx, y + 52, '출전 영웅 없음', textStyle(18, C.faint));
 
       const partyFavored = new Set(readyFormation().map((t) => heroRace(t.hero).favored));
       const counts = new Map<string, number>();
       for (const id of def.enemies) counts.set(id, (counts.get(id) ?? 0) + 1);
-      let ey = y + 148;
+      let ey = y + 92;
       for (const [id, n] of counts) {
         const m = MONSTERS[id as keyof typeof MONSTERS];
-        this.add.image(x + 48, ey + 28, `unit-${id}`).setScale(m.boss ? 4.2 : 3.4);
-        const nm = this.add.text(x + 92, ey + 2, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(22, m.boss ? C.redStr : C.text));
-        if (partyFavored.has(m.family)) this.add.text(nm.x + nm.width + 8, ey + 6, '천적 있음', textStyle(18, C.greenStr));
-        const fc = chip(this, x + 92, ey + 44, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);
-        this.add.text(x + 92 + fc.width + 8, ey + 34, m.note, textStyle(18, C.dim, { wordWrap: { width: w - 110 - fc.width } }));
-        ey += 78;
+        this.add.image(x + 40, ey + 24, `unit-${id}`).setScale(m.boss ? 3.4 : 2.8);
+        const nm = this.add.text(x + 76, ey, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(22, m.boss ? C.redStr : C.text));
+        if (partyFavored.has(m.family)) this.add.text(nm.x + nm.width + 8, ey + 4, '천적 있음', textStyle(18, C.greenStr));
+        const fc = chip(this, x + 76, ey + 40, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);
+        const note = this.add.text(x + 76 + fc.width + 8, ey + 30, m.note, textStyle(18, C.dim, { wordWrap: { width: w - 96 - fc.width } }));
+        ey += Math.max(58, note.height + 36);
       }
     }
-    this.add.text(x + 20, y + h - 18, '자동 전투 · 후퇴 불가 · 클리어 후 귀환', textStyle(18, C.faint)).setOrigin(0, 1);
+    this.add.text(x + 20, y + h - 14, '자동 전투 · 후퇴 불가 · 클리어 후 귀환', textStyle(18, C.faint)).setOrigin(0, 1);
   }
 
-  /** 진형 5칸. 칸을 탭하면 영웅 선택창 */
+  /** 진형 선택 + 5칸 배치. 칸을 탭하면 영웅 선택창 */
   private drawFormation(): void {
-    const top = 604;
+    const top = 106 + PANEL_H + 16;
+    const ftype = game.data.formationType;
     this.add.text(28, top, '진형', textStyle(33));
     this.add.text(110, top + 10, '칸을 탭해 영웅 배치 · 전열이 먼저 맞음', textStyle(18, C.dim));
 
-    const cardW = 316;
-    const cardH = 104;
-    const ys = { front: top + 48, mid: top + 48 + 116, back: top + 48 + 232 };
-    const xs = { front: [W / 2 - 166, W / 2 + 166], mid: [W / 2], back: [W / 2 - 166, W / 2 + 166] };
-
-    for (const row of ['front', 'mid', 'back'] as const) {
-      const ly = ys[row] + cardH / 2;
-      if (row === 'mid') this.add.text(W / 2 - cardW / 2 - 20, ly, ROW_LABEL[row], textStyle(22, C.faint)).setOrigin(1, 0.5);
-      else this.add.text(W / 2, ly, ROW_LABEL[row].split('').join('\n'), textStyle(18, C.faint, { align: 'center', lineSpacing: 4 })).setOrigin(0.5);
-    }
-
-    FORMATION_SLOTS.forEach((pos, i) => {
-      const cx = xs[pos.row][pos.slot];
-      const x = cx - cardW / 2;
-      const y = ys[pos.row];
-      const hero = heroById(game.data.formation[i]);
-      if (hero) {
-        heroCard(this, x, y, cardW, cardH, hero, { onTap: () => this.openPicker(i) });
-      } else {
-        const g = this.add.graphics();
-        g.lineStyle(3, C.line, 1).strokeRoundedRect(x, y, cardW, cardH, 10);
-        this.add.text(cx, y + cardH / 2, '+ 영웅 배치', textStyle(22, C.faint)).setOrigin(0.5);
-        this.add.zone(cx, y + cardH / 2, cardW, cardH).setInteractive({ useHandCursor: true }).on('pointerup', () => this.openPicker(i));
-      }
+    // 진형 종류 (GDD 4.1.1)
+    const cw = 124;
+    FORMATION_IDS.forEach((id, i) => {
+      const on = id === ftype;
+      button(this, 34 + cw / 2 + i * (cw + 8), top + 72, cw, 50, FORMATIONS[id].name, () => {
+        game.data.formationType = id;
+        save();
+        this.requestRender();
+      }, { fill: on ? C.gold : C.panelHi, textColor: on ? '#1b1626' : C.text, size: 22 });
     });
+    this.add.text(28, top + 108, FORMATIONS[ftype].desc, textStyle(18, '#9fd0ff'));
+
+    // 열별 배치
+    const rows: Row[] = ['front', 'mid', 'back'];
+    const slotsByRow = new Map<Row, number[]>();
+    for (let i = 0; i < 5; i++) {
+      const r = slotPosition(ftype, i).row;
+      slotsByRow.set(r, [...(slotsByRow.get(r) ?? []), i]);
+    }
+    let ry = top + 140;
+    const cardH = 92;
+    for (const row of rows) {
+      const slots = slotsByRow.get(row) ?? [];
+      if (slots.length === 0) continue;
+      this.add.text(28, ry, ROW_LABEL[row], textStyle(18, C.faint));
+      const n = slots.length;
+      const cardW = n === 3 ? 214 : 316;
+      const gap = n === 3 ? 8 : 16;
+      const total = n * cardW + (n - 1) * gap;
+      slots.forEach((slot, k) => {
+        const x = W / 2 - total / 2 + k * (cardW + gap);
+        const y = ry + 24;
+        const hero = heroById(game.data.formation[slot]);
+        if (hero) {
+          heroCard(this, x, y, cardW, cardH, hero, { onTap: () => this.openPicker(slot) });
+        } else {
+          const g = this.add.graphics();
+          g.lineStyle(3, C.line, 1).strokeRoundedRect(x, y, cardW, cardH, 10);
+          this.add.text(x + cardW / 2, y + cardH / 2, '+ 영웅 배치', textStyle(22, C.faint)).setOrigin(0.5);
+          this.add.zone(x + cardW / 2, y + cardH / 2, cardW, cardH).setInteractive({ useHandCursor: true }).on('pointerup', () => this.openPicker(slot));
+        }
+      });
+      ry += cardH + 34;
+    }
   }
 
   private drawGo(): void {
@@ -198,8 +223,8 @@ export class TowerScene extends Page {
     // 패널 안을 탭해도 닫히지 않게
     this.add.zone(px + pw / 2, py + ph / 2, pw, ph).setInteractive();
 
-    const pos = FORMATION_SLOTS[slot];
-    this.add.text(px + 24, py + 22, `${ROW_LABEL[pos.row]}${pos.row === 'mid' ? '' : ` ${pos.slot + 1}번`} 자리`, textStyle(33));
+    const pos = slotPosition(game.data.formationType, slot);
+    this.add.text(px + 24, py + 22, `${ROW_LABEL[pos.row]}${pos.count > 1 ? ` ${pos.index + 1}번` : ''} 자리`, textStyle(33));
     this.add.text(px + 24, py + 66, '다른 칸의 영웅을 고르면 자리를 바꿉니다', textStyle(18, C.dim));
 
     const heroes = living();
@@ -212,7 +237,7 @@ export class TowerScene extends Page {
       const here = inSlot === slot;
       let note = statusLine(h);
       if (inSlot >= 0 && !here) {
-        const p = FORMATION_SLOTS[inSlot];
+        const p = slotPosition(game.data.formationType, inSlot);
         note = { text: `${ROW_LABEL[p.row]} 배치 중`, color: C.goldStr };
       } else if (here) note = { text: '지금 이 자리', color: C.goldStr };
       const blocked = h.status !== 'ready' && inSlot < 0;

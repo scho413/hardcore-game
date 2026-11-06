@@ -31,7 +31,43 @@ export type Effect =
   | { kind: 'damage' }
   | { kind: 'heal' }
   /** 도발: 적의 단일 공격을 자신에게 유도 + 방어 증가 */
-  | { kind: 'taunt'; turns: number };
+  | { kind: 'taunt'; turns: number }
+  /** 버프: 대상 공격력 +atk (자기 턴 기준 turns번) */
+  | { kind: 'buff'; atk: number; turns: number }
+  /** 아무것도 안 함 (겁에 질림 등) */
+  | { kind: 'none' };
+
+/**
+ * 전투 중 효과 수치. 특성·종족·진형·역할을 영웅 데이터 쪽에서 합산해 넘깁니다.
+ * 가산 값은 비율 (0.15 = 15%)
+ */
+export interface CombatFx {
+  /** 항상 적용되는 회피 확률 */
+  dodge?: number;
+  /** 체력 30% 이하일 때 행동을 포기할 확률 (겁쟁이) */
+  cowerChance?: number;
+  /** 공격이 빗나갈 확률 (서툰 손) */
+  missChance?: number;
+  /** 쓰러진 아군 1명당 공격력 + / 방어력 - (광전사) */
+  berserkAtkPerDown?: number;
+  berserkDefPerDown?: number;
+  /** 체력 30% 이하일 때 공격력 + (용기, 역전의 용사) */
+  lowHpAtk?: number;
+  /** 체력 50% 이하일 때 공격력 + (바바리안) */
+  rageAtk?: number;
+  /** 받는 피해 가산 (-0.15 = 15% 덜 받음) */
+  dmgTaken?: number;
+  /** 광역 / 단일 공격에 받는 피해 가산 (산개 진형) */
+  aoeTaken?: number;
+  singleTaken?: number;
+  /** 주는 치유·버프 효과 가산, 받는 치유 가산 */
+  healGive?: number;
+  healRecv?: number;
+  /** 계열별 주는 피해 가산 (천적 +0.25, 사냥꾼 +, 트라우마 -) */
+  vsFamily?: Record<string, number>;
+  /** 계열별 받는 피해 가산 (트라우마 +) */
+  fromFamily?: Record<string, number>;
+}
 
 export type Projectile = 'none' | 'arrow' | 'magic' | 'holy';
 
@@ -61,12 +97,10 @@ export interface UnitInit {
   kind: string;
   /** 화면에서 쓸 텍스처 키. 없으면 `unit-<kind>` */
   texture?: string;
-  /** 특성·종족 효과 id (data/traits.ts, data/races.ts의 RaceHook) */
-  traits?: string[];
+  /** 전투 중 효과 (특성·종족·진형·역할 합산) */
+  fx?: CombatFx;
   /** 적 계열 (data/races.ts) */
   family?: string;
-  /** 이 유닛이 피해 +25%를 주는 계열 (종족 천적) */
-  favored?: string[];
   /** 투사체·마법 색 */
   fxColor?: number;
   row: Row;
@@ -88,6 +122,14 @@ export interface Unit extends UnitInit {
   down: boolean;
   cooldowns: Record<string, number>;
   tauntTurns: number;
+  /** 공격력 버프 (축복) */
+  atkBuff: { mult: number; turns: number } | null;
+  /** 이 전투에서 쓰러뜨린 수 (계열별) */
+  kills: Record<string, number>;
+  /** 이 유닛을 쓰러뜨린 적 */
+  downedBy?: { name: string; skill: string; family?: string };
+  /** 이 전투 중 가장 낮았던 체력 비율 */
+  lowestHp: number;
 }
 
 export interface Hit {
@@ -99,8 +141,10 @@ export interface Hit {
   favored: boolean;
   /** 이 타격으로 쓰러졌는지 */
   downed: boolean;
-  /** 회피 (겁쟁이 특성, 토끼 수인) */
+  /** 회피 (토끼 수인 등) */
   dodged?: boolean;
+  /** 빗나감 (서툰 손) */
+  missed?: boolean;
 }
 
 export interface ActionResult {
@@ -110,8 +154,10 @@ export interface ActionResult {
   isSkill: boolean;
   targetIds: string[];
   hits: Hit[];
-  /** 도발 등 상태 부여 */
-  status?: { targetId: string; label: string };
+  /** 도발·축복 등 상태 부여 */
+  status?: { targetIds: string[]; label: string };
+  /** 겁에 질려 행동하지 못함 */
+  cowered?: boolean;
   /** 이 행동 후 전투 결과 */
   outcome: 'win' | 'lose' | null;
   /** 행동 번호 (1부터) */

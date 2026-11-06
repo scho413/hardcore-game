@@ -4,8 +4,8 @@ import type { Family } from './races';
 export type MonsterId =
   // 괴수
   | 'slime' | 'spider' | 'sandworm'
-  // 녹색족
-  | 'goblin' | 'hobgoblin' | 'orc'
+  // 녹색족 (1~10층 고블린 소굴)
+  | 'goblin' | 'goblin_archer' | 'goblin_shaman' | 'goblin_bomber' | 'wolf_rider' | 'hobgoblin' | 'goblin_chief' | 'goblin_king' | 'orc'
   // 인간
   | 'bandit'
   // 야수
@@ -66,10 +66,59 @@ export const MONSTERS: Record<MonsterId, MonsterDef> = {
   },
   // ── 녹색족 ──
   goblin: {
-    id: 'goblin', name: '고블린', family: 'greenskin', row: 'front',
+    id: 'goblin', name: '고블린 전사', family: 'greenskin', row: 'front',
     base: { hp: 110, atk: 21, def: 8, spd: 108, crit: 0.08 },
     basic: melee('찌르기'), skills: [],
     note: '빠른 근접',
+  },
+  goblin_archer: {
+    id: 'goblin_archer', name: '고블린 궁수', family: 'greenskin', row: 'back',
+    base: { hp: 85, atk: 20, def: 5, spd: 110, crit: 0.1 },
+    basic: ranged('화살', 'arrow'),
+    skills: [skill('aim', '조준 사격', 1.5, 'lowest', 3, { projectile: 'arrow' })],
+    note: '후열에서 약한 영웅을 저격',
+  },
+  goblin_shaman: {
+    id: 'goblin_shaman', name: '고블린 주술사', family: 'greenskin', row: 'back', fx: 0x8adf5a,
+    base: { hp: 95, atk: 18, def: 5, spd: 100, crit: 0.05 },
+    basic: { ...ranged('저주'), mult: 0.9 },
+    skills: [{ id: 'totem', name: '치유의 토템', cooldown: 3, mult: 1.8, targeting: 'ally-lowest', effect: { kind: 'heal' }, projectile: 'holy', healBelow: { ratio: 0.6, minCount: 1 } }],
+    note: '고블린을 치유함 — 먼저 처치',
+  },
+  goblin_bomber: {
+    id: 'goblin_bomber', name: '고블린 폭탄병', family: 'greenskin', row: 'back', fx: 0xff9a3a,
+    base: { hp: 80, atk: 22, def: 4, spd: 96, crit: 0.05 },
+    basic: { ...ranged('돌팔매'), mult: 0.8 },
+    skills: [skill('bomb', '폭탄 투척', 0.7, 'all', 3, { projectile: 'magic', big: true })],
+    note: '3턴마다 전체 폭발',
+  },
+  wolf_rider: {
+    id: 'wolf_rider', name: '늑대 기수', family: 'greenskin', row: 'front',
+    base: { hp: 130, atk: 22, def: 7, spd: 132, crit: 0.1 },
+    basic: melee('창 찌르기'),
+    skills: [skill('charge', '돌진', 1.5, 'lowest')],
+    note: '매우 빠름, 약한 영웅에게 돌진',
+  },
+  goblin_chief: {
+    id: 'goblin_chief', name: '고블린 족장', family: 'greenskin', row: 'front', boss: 'mid',
+    base: { hp: 950, atk: 38, def: 14, spd: 88, crit: 0.08 },
+    basic: melee('몽둥이'),
+    skills: [
+      { id: 'roar', name: '족장의 함성', cooldown: 4, mult: 0, targeting: 'ally-all', effect: { kind: 'buff', atk: 0.3, turns: 3 }, projectile: 'none', big: true },
+      skill('slam', '내려찍기', 0.8, 'all', 3, { big: true }),
+    ],
+    note: '중간보스. 함성으로 고블린을 강화',
+  },
+  goblin_king: {
+    id: 'goblin_king', name: '고블린 왕', family: 'greenskin', row: 'front', boss: 'main', fx: 0xe8c25a,
+    base: { hp: 900, atk: 28, def: 16, spd: 95, crit: 0.1 },
+    basic: melee('황금 홀'),
+    skills: [
+      { id: 'command', name: '총공격 명령', cooldown: 4, mult: 0, targeting: 'ally-all', effect: { kind: 'buff', atk: 0.25, turns: 3 }, projectile: 'none', big: true },
+      skill('wrath', '진노', 0.9, 'all', 3, { projectile: 'magic', big: true }),
+      skill('execute', '처형', 1.6, 'lowest', 3),
+    ],
+    note: '메인보스. 부하를 강화하고 약한 영웅을 처형',
   },
   hobgoblin: {
     id: 'hobgoblin', name: '홉고블린', family: 'greenskin', row: 'front',
@@ -194,7 +243,7 @@ export const MONSTERS: Record<MonsterId, MonsterDef> = {
 };
 
 /** 층당 적 강화율 */
-export const FLOOR_GROWTH = 0.12;
+export const FLOOR_GROWTH = 0.13;
 /** 적 공격력 전체 배율 — 난이도 1차 조절 손잡이 */
 export const ENEMY_ATK_SCALE = 1.85;
 

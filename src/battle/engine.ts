@@ -1,19 +1,5 @@
-import { DOG_HEAL_MULT, FAVORED_MULT, RABBIT_DODGE, RAGE_ATK, RAGE_HP_RATIO } from '../data/races';
-import {
-  BERSERKER_PER_DOWN,
-  COWARD_DODGE,
-  COWARD_HP_RATIO,
-  IRON_SKIN_TAKEN,
-} from '../data/traits';
 import { Rng } from './rng';
-import type {
-  ActionResult,
-  Hit,
-  Side,
-  SkillDef,
-  Unit,
-  UnitInit,
-} from './types';
+import type { ActionResult, CombatFx, Hit, Side, SkillDef, Unit, UnitInit } from './types';
 
 export const GAUGE_MAX = 1000;
 
@@ -28,8 +14,14 @@ export const DEF_FACTOR = 0.5;
 export const MIN_DAMAGE_RATIO = 0.2;
 /** 도발 중 방어력 배율 */
 export const TAUNT_DEF_MULT = 1.5;
+/** 빈사 기준 (겁쟁이, 용기, 역전의 용사) */
+export const LOW_HP = 0.3;
+/** 바바리안 분노 기준 */
+export const RAGE_HP = 0.5;
 
 const ROW_ORDER = ['front', 'mid', 'back'] as const;
+
+const COWER: SkillDef = { id: 'cower', name: '겁에 질림', cooldown: 0, mult: 0, targeting: 'self', effect: { kind: 'none' }, projectile: 'none' };
 
 export class Battle {
   readonly units: Unit[];
@@ -47,6 +39,9 @@ export class Battle {
       down: false,
       cooldowns: {},
       tauntTurns: 0,
+      atkBuff: null,
+      kills: {},
+      lowestHp: 1,
     }));
   }
 
@@ -72,16 +67,21 @@ export class Battle {
     actor.gauge -= GAUGE_MAX;
     this.turn++;
 
-    // 자기 턴 시작 시 쿨다운/도발 감소
+    // 자기 턴 시작: 쿨다운·도발·버프 감소
     for (const k of Object.keys(actor.cooldowns)) {
       if (actor.cooldowns[k] > 0) actor.cooldowns[k]--;
     }
     if (actor.tauntTurns > 0) actor.tauntTurns--;
+    if (actor.atkBuff && --actor.atkBuff.turns <= 0) actor.atkBuff = null;
 
-    const skill = this.chooseSkill(actor);
+    // 겁쟁이: 빈사 상태에서 행동 포기
+    const fx = actor.fx ?? {};
+    const cowered = !!fx.cowerChance && actor.hp / actor.stats.hp <= LOW_HP && this.rng.next() < fx.cowerChance;
+
+    const skill = cowered ? COWER : this.chooseSkill(actor);
     if (skill.cooldown > 0) actor.cooldowns[skill.id] = skill.cooldown;
 
-    const targets = this.selectTargets(actor, skill);
+    const targets = cowered ? [] : this.selectTargets(actor, skill);
     const hits: Hit[] = [];
     let status: ActionResult['status'];
 
@@ -99,7 +99,15 @@ export class Battle {
         break;
       case 'taunt':
         actor.tauntTurns = skill.effect.turns;
-        status = { targetId: actor.id, label: '도발!' };
+        status = { targetIds: [actor.id], label: '도발!' };
+        break;
+      case 'buff': {
+        const mult = skill.effect.atk * (1 + (fx.healGive ?? 0));
+        for (const t of targets) t.atkBuff = { mult, turns: skill.effect.turns + (t === actor ? 1 : 0) };
+        status = { targetIds: targets.map((t) => t.id), label: `공격 +${Math.round(mult * 100)}%` };
+        break;
+      }
+      case 'none':
         break;
     }
 
@@ -114,6 +122,7 @@ export class Battle {
       targetIds: targets.map((t) => t.id),
       hits,
       status,
+      cowered,
       outcome: this.outcome,
       turn: this.turn,
       enraged: this.enraged,
@@ -194,46 +203,61 @@ export class Battle {
   }
 
   private dealDamage(actor: Unit, target: Unit, skill: SkillDef): Hit {
-    const has = (u: Unit, t: string) => u.traits?.includes(t) ?? false;
-    const favored = !!target.family && (actor.favored?.includes(target.family) ?? false);
+    const a: CombatFx = actor.fx ?? {};
+    const t: CombatFx = target.fx ?? {};
+    const vs = target.family ? a.vsFamily?.[target.family] ?? 0 : 0;
+    const favored = vs > 0;
+    const base = { targetId: target.id, amount: 0, heal: false, crit: false, favored, downed: false };
 
-    // 회피: 겁쟁이(빈사 상태) / 토끼 수인(항상 10%)
-    const cowardDodge = has(target, 'coward') && target.hp / target.stats.hp <= COWARD_HP_RATIO && this.rng.next() < COWARD_DODGE;
-    if (cowardDodge || (has(target, 'r_dodge') && this.rng.next() < RABBIT_DODGE)) {
-      return { targetId: target.id, amount: 0, heal: false, crit: false, favored, downed: false, dodged: true };
-    }
-    // 광전사: 쓰러진 아군 수만큼 공격력 증가
+    if (t.dodge && this.rng.next() < t.dodge) return { ...base, dodged: true };
+    if (a.missChance && this.rng.next() < a.missChance) return { ...base, missed: true };
+
+    // 공격력 배율: 광전사·빈사·분노·축복
     const fallenFriends = this.units.filter((u) => u.side === actor.side && u.down).length;
-    const berserk = has(actor, 'berserker') ? 1 + BERSERKER_PER_DOWN * fallenFriends : 1;
-    // 바바리안: 빈사 상태에서 공격력 증가
-    const rage = has(actor, 'r_rage') && actor.hp / actor.stats.hp <= RAGE_HP_RATIO ? RAGE_ATK : 1;
-    const favMult = favored ? FAVORED_MULT : 1;
+    const hpA = actor.hp / actor.stats.hp;
+    const atkMult =
+      1 +
+      (a.berserkAtkPerDown ?? 0) * fallenFriends +
+      (hpA <= LOW_HP ? a.lowHpAtk ?? 0 : 0) +
+      (hpA <= RAGE_HP ? a.rageAtk ?? 0 : 0) +
+      (actor.atkBuff?.mult ?? 0);
     const enrageMult = actor.side === 'enemy' && this.enraged ? 1.6 : 1;
 
     // GDD 4.2: 공격력 × 스킬 배율 × 천적 배율 − 방어력 보정
-    const raw = actor.stats.atk * berserk * rage * skill.mult * favMult * enrageMult;
-    const def = target.stats.def * (target.tauntTurns > 0 ? TAUNT_DEF_MULT : 1);
-    let dmg = Math.max(raw * MIN_DAMAGE_RATIO, raw - def * DEF_FACTOR);
+    const raw = actor.stats.atk * atkMult * skill.mult * (1 + vs) * enrageMult;
+    const targetFallen = this.units.filter((u) => u.side === target.side && u.down).length;
+    const defMult = Math.max(0.2, 1 - (t.berserkDefPerDown ?? 0) * targetFallen) * (target.tauntTurns > 0 ? TAUNT_DEF_MULT : 1);
+    let dmg = Math.max(raw * MIN_DAMAGE_RATIO, raw - target.stats.def * defMult * DEF_FACTOR);
     dmg *= this.rng.range(0.9, 1.1);
 
     const crit = this.rng.next() < actor.stats.crit;
     if (crit) dmg *= CRIT_MULT;
-    if (has(target, 'ironSkin')) dmg *= IRON_SKIN_TAKEN;
+
+    // 받는 피해 배율: 강철 피부·진형·트라우마
+    const aoe = skill.targeting === 'all';
+    const taken = 1 + (t.dmgTaken ?? 0) + (aoe ? t.aoeTaken ?? 0 : t.singleTaken ?? 0) + (actor.family ? t.fromFamily?.[actor.family] ?? 0 : 0);
+    dmg *= Math.max(0.2, taken);
 
     const amount = Math.max(1, Math.round(dmg));
     target.hp = Math.max(0, target.hp - amount);
+    target.lowestHp = Math.min(target.lowestHp, target.hp / target.stats.hp);
     const downed = target.hp === 0;
     if (downed) {
       target.down = true;
       target.gauge = 0;
       target.tauntTurns = 0;
+      target.atkBuff = null;
+      target.downedBy = { name: actor.name, skill: skill.name, family: actor.family };
+      const fam = target.family ?? 'none';
+      actor.kills[fam] = (actor.kills[fam] ?? 0) + 1;
     }
-    return { targetId: target.id, amount, heal: false, crit, favored, downed };
+    return { ...base, amount, crit, downed };
   }
 
   private heal(actor: Unit, target: Unit, skill: SkillDef): Hit {
-    const boost = target.traits?.includes('r_heal') ? DOG_HEAL_MULT : 1;
-    const amount = Math.round(actor.stats.atk * skill.mult * boost * this.rng.range(0.95, 1.05));
+    const give = 1 + (actor.fx?.healGive ?? 0);
+    const recv = 1 + (target.fx?.healRecv ?? 0);
+    const amount = Math.round(actor.stats.atk * skill.mult * give * recv * this.rng.range(0.95, 1.05));
     const before = target.hp;
     target.hp = Math.min(target.stats.hp, target.hp + amount);
     return { targetId: target.id, amount: target.hp - before, heal: true, crit: false, favored: false, downed: false };

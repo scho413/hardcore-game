@@ -1,13 +1,21 @@
 import { CLOTHS, lookSignature, randomLook, type Look } from '../art/heroArt';
-import type { Row, Stats, UnitInit } from '../battle/types';
-import { CLASSES, statsAtLevel, type ClassId } from './classes';
+import type { CombatFx, Stats, UnitInit } from '../battle/types';
+import { CLASSES, roleOf, statsAtLevel, type ClassId } from './classes';
+import { FORMATIONS, slotPosition, type FormationId } from './formations';
 import { randomName } from './names';
-import { BEAST_KINDS, raceTrait, type BeastKind, type RaceId } from './races';
-import { TRAITS, TRAIT_IDS, type TraitId } from './traits';
+import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
+import { rollBirthTraits, traitEffects, type HeroTrait } from './traits';
 
 export type { Look };
 
 export type HeroStatus = 'ready' | 'injured' | 'dead';
+
+/** 일대기 한 줄 (GDD 3.7) */
+export interface LogEntry {
+  t: number;
+  text: string;
+  tone: 'info' | 'good' | 'bad' | 'death';
+}
 
 export interface Hero {
   id: string;
@@ -16,20 +24,27 @@ export interface Hero {
   race: RaceId;
   /** 수인 갈래 */
   beast?: BeastKind;
+  /** 전투 역할 (classes.ts의 RoleDef id) */
+  role: string;
   level: number;
   xp: number;
-  traits: TraitId[];
+  traits: HeroTrait[];
   /** 개체값: 같은 직업이라도 능력치가 조금씩 다름 (0.92~1.08) */
   statMul: { hp: number; atk: number; def: number; spd: number };
   look: Look;
   status: HeroStatus;
   /** 중상 회복 시각 (epoch ms) */
   injuredUntil?: number;
-  /** 도전해 본 가장 높은 층 */
+  /** 도전해 본 가장 높은 층 / 클리어한 가장 높은 층 */
   bestFloor: number;
+  bestCleared: number;
+  /** 누적 기록 */
+  record: { battles: number; wins: number; kills: number; killsBy: Partial<Record<Family, number>> };
+  log: LogEntry[];
   /** 사망 기록 */
   diedFloor?: number;
   diedAt?: number;
+  diedBy?: string;
   recruitedAt: number;
 }
 
@@ -42,6 +57,8 @@ export const XP_PER_FLOOR = 100;
 export const XP_PER_LEVEL = 100;
 /** 로스터 최대 인원 (이후 숙소 업그레이드로 확장) */
 export const ROSTER_MAX = 12;
+/** 일대기 최대 줄 수 */
+export const LOG_MAX = 40;
 
 /** 종족 출현 비율 */
 const RACE_WEIGHTS: [RaceId, number][] = [
@@ -50,15 +67,6 @@ const RACE_WEIGHTS: [RaceId, number][] = [
   ['dwarf', 0.18],
   ['barbarian', 0.14],
   ['beastfolk', 0.22],
-];
-
-/** 진형 슬롯 5개: 전열 2 / 중열 1 / 후열 2 (GDD 4.1) */
-export const FORMATION_SLOTS: { row: Row; slot: number }[] = [
-  { row: 'front', slot: 0 },
-  { row: 'front', slot: 1 },
-  { row: 'mid', slot: 0 },
-  { row: 'back', slot: 0 },
-  { row: 'back', slot: 1 },
 ];
 
 const CLASS_IDS = Object.keys(CLASSES) as ClassId[];
@@ -77,6 +85,7 @@ export function heroLookKey(h: Pick<Hero, 'race' | 'beast' | 'classId' | 'look'>
 export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; now?: number } = {}): Hero {
   const pick = <T,>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
   const classId = opts.classId ?? pick(CLASS_IDS);
+  const now = opts.now ?? Date.now();
 
   let race = opts.race;
   if (!race) {
@@ -91,16 +100,6 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
     }
   }
   const beast = race === 'beastfolk' ? pick(BEAST_KINDS) : undefined;
-
-  const traits: TraitId[] = [];
-  const count = rand() < 0.35 ? 2 : 1;
-  while (traits.length < count) {
-    const t = pick(TRAIT_IDS);
-    if (traits.includes(t)) continue;
-    if (traits.some((x) => TRAITS[x].conflicts?.includes(t))) continue;
-    traits.push(t);
-  }
-
   const vary = () => Math.round((0.92 + rand() * 0.16) * 100) / 100;
 
   // 같은 얼굴이 나오면 다시 뽑기 (GDD 3.1: 모든 영웅의 얼굴이 달라야 함)
@@ -117,14 +116,18 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
     classId,
     race,
     beast,
+    role: CLASSES[classId].roles[0].id,
     level: 1,
     xp: 0,
-    traits,
+    traits: rollBirthTraits(rand),
     statMul: { hp: vary(), atk: vary(), def: vary(), spd: vary() },
     look,
     status: 'ready',
     bestFloor: 0,
-    recruitedAt: opts.now ?? Date.now(),
+    bestCleared: 0,
+    record: { battles: 0, wins: 0, kills: 0, killsBy: {} },
+    log: [{ t: now, text: '탑의 마을에 도착해 모집에 응함', tone: 'info' }],
+    recruitedAt: now,
   };
 }
 
@@ -132,38 +135,81 @@ export function heroRace(h: Pick<Hero, 'race' | 'beast'>) {
   return raceTrait(h.race, h.beast);
 }
 
-/** 레벨·개체값·특성을 반영한 최종 능력치 */
-export function heroStats(h: Hero): Stats {
-  const s = statsAtLevel(CLASSES[h.classId].base, h.level);
-  const has = (t: TraitId) => h.traits.includes(t);
-  const m = heroRace(h).mod;
-  return {
-    hp: Math.round(s.hp * h.statMul.hp * (m.hp ?? 1) * (has('sturdy') ? 1.15 : 1)),
-    atk: Math.round(s.atk * h.statMul.atk * (m.atk ?? 1)),
-    def: Math.round(s.def * h.statMul.def * (m.def ?? 1)),
-    spd: Math.round(s.spd * h.statMul.spd * (m.spd ?? 1) * (has('swift') ? 1.1 : 1) * (has('ironSkin') ? 0.9 : 1)),
-    crit: s.crit + (m.crit ?? 0) + (has('keen') ? 0.1 : 0),
-  };
+function addFx(a: CombatFx, b: CombatFx | undefined): CombatFx {
+  if (!b) return a;
+  const out: CombatFx = { ...a };
+  for (const [k, v] of Object.entries(b) as [keyof CombatFx, unknown][]) {
+    if (typeof v === 'number') (out[k] as number) = ((out[k] as number | undefined) ?? 0) + v;
+    else if (v && typeof v === 'object') {
+      const m = { ...((out[k] as Record<string, number> | undefined) ?? {}) };
+      for (const [f, n] of Object.entries(v as Record<string, number>)) m[f] = (m[f] ?? 0) + n;
+      (out[k] as Record<string, number>) = m;
+    }
+  }
+  return out;
 }
 
-export function heroToUnit(h: Hero, slotIndex: number): UnitInit {
-  const c = CLASSES[h.classId];
-  const pos = FORMATION_SLOTS[slotIndex];
+export interface HeroContext {
+  formation?: FormationId;
+  /** 진형 슬롯 (없으면 위치 효과 없음) */
+  slot?: number;
+  floor?: number;
+}
+
+/** 레벨·개체값·종족·특성·역할·진형을 반영한 능력치와 전투 효과 */
+export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: CombatFx } {
+  const s = statsAtLevel(CLASSES[h.classId].base, h.level);
+  const race = heroRace(h);
+  const m = race.mod;
+  const formation = ctx.formation ?? 'basic';
+  const row = ctx.slot !== undefined ? slotPosition(formation, ctx.slot).row : undefined;
+  const te = traitEffects(h.traits, { front: row === 'front', floor: ctx.floor ?? 1 });
+  const role = roleOf(h.classId, h.role).mod ?? {};
+  const fEff = FORMATIONS[formation].effects;
+  const rowEff = row ? fEff[row] ?? {} : {};
+  const allEff = fEff.all ?? {};
+
+  const mul = (k: 'hp' | 'atk' | 'def' | 'spd') =>
+    Math.max(0.3, 1 + te.stat[k] + (k === 'atk' ? role.atk ?? 0 : k === 'def' ? role.def ?? 0 : 0) + (k !== 'hp' ? (rowEff[k] ?? 0) + (allEff[k] ?? 0) : 0));
+
+  const stats: Stats = {
+    hp: Math.round(s.hp * h.statMul.hp * (m.hp ?? 1) * mul('hp')),
+    atk: Math.round(s.atk * h.statMul.atk * (m.atk ?? 1) * mul('atk')),
+    def: Math.round(s.def * h.statMul.def * (m.def ?? 1) * mul('def')),
+    spd: Math.round(s.spd * h.statMul.spd * (m.spd ?? 1) * mul('spd')),
+    crit: s.crit + (m.crit ?? 0) + te.crit,
+  };
+
+  let fx: CombatFx = { vsFamily: { [race.favored]: FAVORED_BONUS } };
+  fx = addFx(fx, race.fx);
+  fx = addFx(fx, te.fx);
+  fx = addFx(fx, rowEff.fx);
+  fx = addFx(fx, allEff.fx);
+  return { stats, fx };
+}
+
+export function heroStats(h: Hero): Stats {
+  return heroCombat(h).stats;
+}
+
+export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId; floor: number }): UnitInit {
+  const pos = slotPosition(ctx.formation, slot);
+  const role = roleOf(h.classId, h.role);
+  const { stats, fx } = heroCombat(h, { ...ctx, slot });
   return {
     id: h.id,
     name: h.name,
     side: 'ally',
-    kind: c.id,
+    kind: h.classId,
     texture: `hero-${h.id}`,
-    favored: [heroRace(h).favored],
+    fx,
     fxColor: parseInt(CLOTHS[h.look.cloth % CLOTHS.length].slice(1), 16),
     row: pos.row,
-    slot: pos.slot,
-    stats: heroStats(h),
-    basic: c.basic,
-    skills: c.skills,
+    slot: pos.index,
+    stats,
+    basic: role.basic,
+    skills: role.skills,
     level: h.level,
-    traits: [...h.traits, ...(heroRace(h).hooks ?? [])],
   };
 }
 
@@ -184,7 +230,14 @@ export function gainXp(h: Hero, xp: number): number {
 }
 
 export function injuryDuration(h: Hero): number {
-  return h.traits.includes('fastRecovery') ? INJURY_MS / 2 : INJURY_MS;
+  const te = traitEffects(h.traits, { front: false, floor: 1 });
+  return Math.round(INJURY_MS * Math.max(0.25, 1 + te.injury));
+}
+
+export function addLog(h: Hero, text: string, tone: LogEntry['tone'] = 'info', t = Date.now()): void {
+  h.log.push({ t, text, tone });
+  // 너무 길어지면 앞쪽 몇 줄(모집 등)은 남기고 중간을 줄임
+  if (h.log.length > LOG_MAX) h.log.splice(3, h.log.length - LOG_MAX);
 }
 
 /** 회복 시간이 지난 중상 영웅을 정상으로 되돌림. 바뀐 게 있으면 true */
@@ -194,6 +247,7 @@ export function tickRecovery(heroes: Hero[], now: number): boolean {
     if (h.status === 'injured' && (h.injuredUntil ?? 0) <= now) {
       h.status = 'ready';
       delete h.injuredUntil;
+      addLog(h, '중상에서 회복', 'info', now);
       changed = true;
     }
   }

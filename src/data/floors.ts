@@ -8,20 +8,25 @@ export interface FloorDef {
   enemies: MonsterId[];
 }
 
-// GDD 5.1 / 5.1.1. 프로토타입 범위는 10층.
-// 11~25층 예정: 뱀족·샌드웜(15층 중간보스)·리치(20층 메인보스) 등
+// GDD 5.1.1: 10층마다 테마. 1~10층 = 고블린 소굴 (녹색족 → 인간이 천적)
+export const THEMES = [{ from: 1, to: 10, name: '고블린 소굴' }];
+
 export const FLOORS: FloorDef[] = [
-  { floor: 1, enemies: ['slime', 'goblin', 'slime'] },
-  { floor: 2, enemies: ['goblin', 'bandit', 'goblin', 'spider'] },
-  { floor: 3, enemies: ['wolfkin', 'hobgoblin', 'wolfkin', 'spider'] },
-  { floor: 4, enemies: ['bandit', 'orc', 'hobgoblin', 'imp', 'skeleton'] },
-  { floor: 5, title: '중간보스', enemies: ['goblin', 'ogre', 'goblin'] },
-  { floor: 6, enemies: ['hyena', 'gnoll', 'hyena', 'imp', 'imp'] },
-  { floor: 7, enemies: ['lizardman', 'ghoul', 'lizardman', 'naga', 'skeleton'] },
-  { floor: 8, enemies: ['troll', 'ghoul', 'lizardman', 'succubus'] },
-  { floor: 9, enemies: ['orc', 'goblin', 'bandit', 'succubus', 'skeleton'] },
-  { floor: 10, title: '메인보스', enemies: ['drake', 'imp', 'imp'] },
+  { floor: 1, enemies: ['goblin', 'goblin', 'goblin'] },
+  { floor: 2, enemies: ['goblin', 'goblin', 'goblin_archer'] },
+  { floor: 3, enemies: ['goblin', 'hobgoblin', 'goblin_archer', 'goblin_archer'] },
+  { floor: 4, enemies: ['goblin', 'wolf_rider', 'hobgoblin', 'goblin_shaman', 'goblin_archer'] },
+  { floor: 5, title: '중간보스', enemies: ['goblin', 'goblin_chief', 'goblin'] },
+  { floor: 6, enemies: ['hobgoblin', 'wolf_rider', 'hobgoblin', 'goblin_shaman', 'goblin_bomber'] },
+  { floor: 7, enemies: ['wolf_rider', 'hobgoblin', 'wolf_rider', 'goblin_archer'] },
+  { floor: 8, enemies: ['hobgoblin', 'wolf_rider', 'hobgoblin', 'goblin_bomber', 'goblin_shaman'] },
+  { floor: 9, enemies: ['hobgoblin', 'wolf_rider', 'hobgoblin', 'goblin_bomber', 'goblin'] },
+  { floor: 10, title: '메인보스', enemies: ['hobgoblin', 'goblin_king', 'goblin'] },
 ];
+
+export function themeOf(floor: number): string {
+  return THEMES.find((t) => floor >= t.from && floor <= t.to)?.name ?? '';
+}
 
 export const TOP_FLOOR = FLOORS.length;
 

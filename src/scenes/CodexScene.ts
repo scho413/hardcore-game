@@ -1,6 +1,7 @@
 import { ensureHeroTextures } from '../art/textures';
 import { CLASSES } from '../data/classes';
 import { fallen } from '../state';
+import { drawChronicle, fmtDate } from '../ui/chronicle';
 import { Page } from '../ui/page';
 import { C, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
@@ -11,6 +12,8 @@ const PER_PAGE = 9;
 export class CodexScene extends Page {
   protected tab = 'codex' as const;
   private page = 0;
+  /** 일대기를 연 영웅과 그 페이지 */
+  private chron: { id: string; page: number } | null = null;
 
   constructor() {
     super('codex');
@@ -18,6 +21,7 @@ export class CodexScene extends Page {
 
   protected onEnter(): void {
     this.page = 0;
+    this.chron = null;
   }
 
   protected draw(): void {
@@ -50,7 +54,7 @@ export class CodexScene extends Page {
       const g = this.add.graphics();
       g.fillStyle(C.bgDeep, 1).fillRoundedRect(x + cw / 2 - 64, y + 16, 128, 104, 8);
       g.lineStyle(3, 0x6a5f7a, 1).strokeRoundedRect(x + cw / 2 - 64, y + 16, 128, 104, 8);
-      this.add.image(x + cw / 2, y + 68, `face-${h.id}`).setScale(9).setTint(0xc8c0d0);
+      this.add.image(x + cw / 2, y + 68, `face-${h.id}`).setScale(4).setTint(0xc8c0d0);
 
       const cls = CLASSES[h.classId];
       this.add.text(x + cw / 2, y + 140, h.name, textStyle(22)).setOrigin(0.5, 0);
@@ -58,7 +62,15 @@ export class CodexScene extends Page {
       this.add.text(x + cw / 2, y + 206, `최고 도달 ${h.bestFloor}층`, textStyle(18, C.goldStr)).setOrigin(0.5, 0);
       this.add.text(x + cw / 2, y + 234, `${h.diedFloor}층에서 전사`, textStyle(18, C.redStr)).setOrigin(0.5, 0);
       if (h.diedAt) this.add.text(x + cw / 2, y + 260, fmtDate(h.diedAt), textStyle(18, C.faint)).setOrigin(0.5, 0);
+      this.add
+        .zone(x + cw / 2, y + ch / 2, cw, ch)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerup', () => {
+          this.chron = { id: h.id, page: 0 };
+          this.requestRender();
+        });
     });
+    this.add.text(W / 2, 120 + 3 * (ch + 12) + 4, '영웅을 누르면 일대기를 볼 수 있습니다', textStyle(18, C.faint)).setOrigin(0.5, 0);
 
     if (pages > 1) {
       const y = 120 + 3 * (ch + 12) + 44;
@@ -74,10 +86,18 @@ export class CodexScene extends Page {
       }, { fill: C.panelHi, textColor: C.text, size: 22 });
       next.setEnabled(this.page < pages - 1);
     }
-  }
-}
 
-function fmtDate(t: number): string {
-  const d = new Date(t);
-  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const open = this.chron && dead.find((h) => h.id === this.chron!.id);
+    if (open) {
+      this.layer(100, () =>
+        drawChronicle(
+          this,
+          open,
+          this.chron!.page,
+          (p) => ((this.chron = { id: open.id, page: p }), this.requestRender()),
+          () => ((this.chron = null), this.requestRender()),
+        ),
+      );
+    }
+  }
 }
