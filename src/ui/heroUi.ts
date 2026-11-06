@@ -3,6 +3,7 @@ import { ensureHeroTextures } from '../art/textures';
 import { CLASSES, roleOf } from '../data/classes';
 import { FATIGUE_MAX, FATIGUE_PENALTY, fatigueLevel, fatigueNextMs, heroRace, xpToNext, type Hero } from '../data/heroes';
 import { TRAITS, traitName } from '../data/traits';
+import { GRADES } from '../data/items';
 import { C, textStyle } from './theme';
 import { chip, panel } from './widgets';
 
@@ -15,6 +16,7 @@ export function fmtTime(ms: number): string {
 export function statusLine(h: Hero, now = Date.now()): { text: string; color: string } {
   if (h.status === 'dead') return { text: `${h.diedFloor}층에서 사망`, color: C.redStr };
   if (h.status === 'injured') return { text: `중상 ${fmtTime((h.injuredUntil ?? now) - now)}`, color: '#ff9a4a' };
+  if (h.status === 'training') return { text: '훈련 중', color: '#9fd0ff' };
   const f = fatigueLevel(h, now);
   if (f > 0) return { text: `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} -${Math.round(f * FATIGUE_PENALTY * 100)}%`, color: FATIGUE_MAX - f < 5 ? '#ff9a4a' : C.goldStr };
   return { text: '출전 가능', color: C.greenStr };
@@ -72,7 +74,7 @@ export function heroCard(
     const img = scene.add.image(x + 36, y + h / 2, `hero-${hero.id}`).setScale(2);
     if (hero.status === 'injured') img.setTint(0x9a8a9a);
     const tx = x + 70;
-    scene.add.text(tx, y + 10, hero.name, textStyle(18));
+    scene.add.text(tx, y + 10, hero.name, textStyle(18, GRADES[hero.grade ?? 0].str));
     scene.add.text(x + w - 10, y + 12, `Lv${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
     scene.add.text(tx, y + 36, classRole(hero), textStyle(18, C.dim));
     scene.add.text(tx, y + 62, st.text, textStyle(18, st.color));
@@ -80,7 +82,8 @@ export function heroCard(
     const img = scene.add.image(x + 50, y + h / 2, `hero-${hero.id}`).setScale(2.5);
     if (hero.status === 'injured') img.setTint(0x9a8a9a);
     const tx = x + 98;
-    scene.add.text(tx, y + 14, hero.name, textStyle(22));
+    const nm = scene.add.text(tx, y + 14, hero.name, textStyle(22, GRADES[hero.grade ?? 0].str));
+    scene.add.text(nm.x + nm.width + 8, y + 18, GRADES[hero.grade ?? 0].name, textStyle(18, GRADES[hero.grade ?? 0].str)).setAlpha(0.8);
     scene.add.text(x + w - 14, y + 16, `Lv ${hero.level}`, textStyle(18, C.goldStr)).setOrigin(1, 0);
     const tall = h >= 140;
     const clsText = scene.add.text(tx, y + (tall ? 46 : 40), classRole(hero), textStyle(18, C.dim));

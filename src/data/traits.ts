@@ -105,6 +105,28 @@ export function rollValue(rand: () => number, kind: TraitKind): number {
   return table[0][0];
 }
 
+/**
+ * 영웅 등급(GDD 8)에 맞춰 특성 보정: 상급은 나쁜 특성 1개를 한 번 다시 뽑음,
+ * 전설은 좋은 특성 1개 보장, 신화는 + 나쁜 특성 없음, 초월은 좋은 특성 2개 보장 + 나쁜 특성 없음
+ */
+export function gradeTraits(rand: () => number, base: HeroTrait[], grade: number): HeroTrait[] {
+  let out = [...base];
+  const isBad = (t: HeroTrait) => TRAITS[t.id].kind === 'bad';
+  if (grade === 2) {
+    const i = out.findIndex(isBad);
+    if (i >= 0 && rand() < 0.5) out.splice(i, 1);
+  }
+  if (grade >= 4) out = out.filter((t) => !isBad(t));
+  const needGood = grade >= 5 ? 2 : grade >= 3 ? 1 : 0;
+  for (let tries = 0; out.filter((t) => TRAITS[t.id].kind === 'good').length < needGood && tries < 30; tries++) {
+    const pool = POOLS.good;
+    const t: HeroTrait = { id: pool[Math.floor(rand() * pool.length)], v: rollValue(rand, 'good') };
+    if (out.length >= TRAIT_MAX) out.splice(out.findIndex((x) => TRAITS[x.id].kind !== 'good'), 1);
+    if (canAddTrait(out, t)) out.push(t);
+  }
+  return out;
+}
+
 /** 태어날 때 특성: 개수 0/1/2 각 1/3 → 종류 좋음/나쁨/양면 각 1/3 → 특성 균등 → 수치 */
 export function rollBirthTraits(rand: () => number): HeroTrait[] {
   const count = Math.floor(rand() * (TRAIT_BIRTH_MAX + 1));

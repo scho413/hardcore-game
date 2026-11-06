@@ -61,6 +61,7 @@ export class BattleScene extends Phaser.Scene {
   /** 소탕: 전투 화면 없이 결과만 */
   private sweep = false;
   private news: string[] = [];
+  private gold = 0;
 
   constructor() {
     super('battle');
@@ -90,6 +91,15 @@ export class BattleScene extends Phaser.Scene {
     const team = readyFormation(this.dungeon ? FATIGUE_DUNGEON : FATIGUE_TOWER);
     for (const t of team) ensureHeroTextures(this, t.hero);
     const allies = team.map((t) => heroToUnit(t.hero, t.slot, { formation: game.data.formationType, floor: this.floor }));
+    // 연금소 영약: 다음 전투 1번 (GDD 9)
+    const el = game.data.elixirs;
+    if (el.might || el.guard) {
+      for (const a of allies) {
+        if (el.might) a.stats.atk = Math.round(a.stats.atk * 1.1);
+        if (el.guard) a.stats.def = Math.round(a.stats.def * 1.15);
+      }
+      game.data.elixirs = {};
+    }
     // 희귀 몬스터 (던전 1~9층)
     const rare = !!this.dungeon && this.dfloor < DUNGEON_FLOORS && Math.random() < RARE_CHANCE;
     const enemies = this.dungeon ? buildDungeonEnemies(this.dungeon, this.dfloor, rare) : buildEnemies(this.floor);
@@ -105,6 +115,7 @@ export class BattleScene extends Phaser.Scene {
     this.reports = res.reports;
     this.rewards = res.rewards;
     this.news = res.events;
+    this.gold = res.gold;
     save();
 
     if (this.sweep) {
@@ -541,7 +552,7 @@ export class BattleScene extends Phaser.Scene {
       : win
         ? injured > 0 ? `${this.floor}층 클리어 · 중상 ${injured}명 · 기력 -${FATIGUE_TOWER}` : `${this.floor}층 클리어 · 전원 무사 · 기력 -${FATIGUE_TOWER}`
         : deaths > 0 ? `${deaths}명이 돌아오지 못했습니다` : `${this.floor}층 실패`;
-    const rewardText = [...this.news, Object.keys(this.rewards).length ? `획득: ${matsText(this.rewards)}` : ''].filter(Boolean).join('\n');
+    const rewardText = [...this.news, this.gold ? `골드 +${this.gold}` : '', Object.keys(this.rewards).length ? `획득: ${matsText(this.rewards)}` : ''].filter(Boolean).join('\n');
 
     const shade = this.add.rectangle(W / 2, BASE_H / 2, W, BOTTOM - TOP, 0x0b0910, 0).setDepth(50).setInteractive();
     this.tweens.add({ targets: shade, fillAlpha: win ? 0.7 : 0.85, duration: 300 });
@@ -591,7 +602,7 @@ export class BattleScene extends Phaser.Scene {
     if (dg) {
       box.add(button(this, 0, by, 440, 84, '던전으로', () => this.leave('dungeon', {}), { size: 33 }));
     } else if (win) {
-      box.add(button(this, 0, by, 440, 84, '귀환', () => this.leave('tower', {}), { size: 33 }));
+      box.add(button(this, 0, by, 440, 84, game.data.tutorial === 1 ? '기지로' : '귀환', () => this.leave(game.data.tutorial === 1 ? 'base' : 'tower', {}), { size: 33 }));
     } else {
       box.add(button(this, -125, by, 220, 84, '탑으로', () => this.leave('tower', {}), { fill: C.panelHi, textColor: C.text, size: 22 }));
       box.add(button(this, 125, by, 220, 84, deaths > 0 ? '추모의 벽' : '영웅 목록', () => this.leave(deaths > 0 ? 'codex' : 'heroes', {}), { size: 22 }));

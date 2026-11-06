@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SPRITES, spriteGrid } from '../art/pixels';
 import { makeGridTexture } from '../art/textures';
+import { game } from '../state';
 
 /** 몬스터·기본 직업 스프라이트를 텍스처(`unit-<kind>`)로 굽습니다. 영웅은 각자 `hero-<id>`로 따로 만듦 */
 export class BootScene extends Phaser.Scene {
@@ -19,6 +20,6 @@ export class BootScene extends Phaser.Scene {
       px.refresh();
     }
 
-    this.scene.start('tower');
+    this.scene.start(game.data.tutorial === 0 ? 'tower' : 'base');
   }
 }

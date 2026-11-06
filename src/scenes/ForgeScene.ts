@@ -99,7 +99,7 @@ export class ForgeScene extends Phaser.Scene {
     this.cameras.main.setScroll(0, -OY);
     const d = game.data;
     if (!canCraft(d.materials, this.cls, this.diff)) {
-      this.scene.start('base');
+      this.scene.start('smithy');
       return;
     }
     spendMats(d.materials, recipeFor(this.cls, this.diff));
@@ -437,10 +437,10 @@ export class ForgeScene extends Phaser.Scene {
   private addButtons(box: Phaser.GameObjects.Container, y: number, broken = false): void {
     const can = canCraft(game.data.materials, this.cls, this.diff);
     if (broken && !can) {
-      box.add(button(this, W / 2, y, 300, 84, '대장간으로', () => this.leave('base'), { fill: C.panelHi, textColor: C.text, size: 22 }));
+      box.add(button(this, W / 2, y, 300, 84, '대장간으로', () => this.leave('smithy'), { fill: C.panelHi, textColor: C.text, size: 22 }));
       return;
     }
-    box.add(button(this, W / 2 - 150, y, 270, 84, '대장간으로', () => this.leave('base'), { fill: C.panelHi, textColor: C.text, size: 22 }));
+    box.add(button(this, W / 2 - 150, y, 270, 84, '대장간으로', () => this.leave('smithy'), { fill: C.panelHi, textColor: C.text, size: 22 }));
     box.add(
       button(this, W / 2 + 150, y, 270, 84, can ? (broken ? '다시 도전' : '한 번 더') : '영웅에게 장착', () => {
         if (can) this.scene.restart({ cls: this.cls, diff: this.diff });
