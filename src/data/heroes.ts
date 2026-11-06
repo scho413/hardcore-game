@@ -58,10 +58,22 @@ export interface Hero {
 // ─── 수치 (GDD 16 미정 사항 → 임시값) ───
 /** 중상 회복 시간 */
 export const INJURY_MS = 5 * 60 * 1000;
-/** 층 클리어 시 참여 영웅 1명이 얻는 경험치 = XP_PER_FLOOR × 층 */
-export const XP_PER_FLOOR = 100;
-/** 다음 레벨까지 필요 경험치 = XP_PER_LEVEL × 현재 레벨 */
-export const XP_PER_LEVEL = 100;
+// ─── 경험치 (GDD 3.6) ───
+/** 탑 층 클리어 경험치 = XP_PER_FLOOR × 층. 첫 클리어는 2배 */
+export const XP_PER_FLOOR = 50;
+export const XP_FIRST_MULT = 2;
+/** 다음 레벨까지 = XP_LEVEL_BASE × 레벨^1.5 (뒤로 갈수록 클리어한 층 반복이 필요) */
+export const XP_LEVEL_BASE = 50;
+
+/**
+ * 탑 층 클리어 시 영웅 1명이 얻는 경험치.
+ * 영웅 레벨이 층보다 2 이상 높으면 줄어듦 (+2: 75%, +3: 50%, +4: 25%, +5부터 10%)
+ */
+export function towerXp(floor: number, level: number, first: boolean): number {
+  const gap = level - floor;
+  const mult = gap >= 2 ? Math.max(0.1, 1 - 0.25 * (gap - 1)) : 1;
+  return Math.round(XP_PER_FLOOR * floor * (first ? XP_FIRST_MULT : 1) * mult);
+}
 /** 로스터 최대 인원 (이후 숙소 업그레이드로 확장) */
 export const ROSTER_MAX = 12;
 /** 일대기 최대 줄 수 */
@@ -290,7 +302,7 @@ export function heroToUnit(h: Hero, slot: number, ctx: { formation: FormationId;
 }
 
 export function xpToNext(level: number): number {
-  return XP_PER_LEVEL * level;
+  return Math.round(XP_LEVEL_BASE * Math.pow(level, 1.5));
 }
 
 /** 경험치를 더하고 오른 레벨 수를 돌려줌 (인간은 +20%) */

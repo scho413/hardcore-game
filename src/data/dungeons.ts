@@ -2,6 +2,7 @@
 import type { UnitInit } from '../battle/types';
 import { matId, type MatKind, type Materials, type Tier } from './items';
 import { MONSTERS, monsterStats, type MonsterId } from './monsters';
+import type { TraitId } from './traits';
 
 export type DungeonId = 'mine' | 'forest' | 'cave';
 
@@ -21,6 +22,8 @@ export interface DungeonDef {
   strongs: number[];
   /** 10층 보스전 적 강함 */
   bossPower: number;
+  /** 승리 시 확률로 얻는 특성 (경험치 대신) */
+  traits: TraitId[];
 }
 
 export const DUNGEONS: Record<DungeonId, DungeonDef> = {
@@ -28,23 +31,26 @@ export const DUNGEONS: Record<DungeonId, DungeonDef> = {
     id: 'mine', name: '버려진 광산', mat: 'metal', desc: '광부들이 떠난 갱도. 금속 광석이 남아 있다',
     weak: ['slime', 'spider'], strong: ['troll'], boss: 'ogre',
     sizes: [3, 3, 4, 4, 4, 4, 5, 4, 4], strongs: [0, 0, 0, 1, 1, 1, 1, 2, 2], bossPower: 8.5,
+    traits: ['sturdy', 'tough', 'ironSkin', 'slow'],
   },
   forest: {
     id: 'forest', name: '어두운 숲', mat: 'wood', desc: '야수 수인들의 사냥터. 단단한 나무가 자란다',
     weak: ['wolfkin', 'hyena'], strong: ['gnoll'], boss: 'gnoll_chief',
     sizes: [3, 3, 4, 4, 4, 4, 4, 4, 4], strongs: [0, 0, 0, 1, 1, 1, 1, 2, 3], bossPower: 7.5,
+    traits: ['swift', 'keen', 'reckless', 'clumsy'],
   },
   cave: {
     id: 'cave', name: '마석 동굴', mat: 'crystal', desc: '마력이 고인 동굴. 악마와 망자가 모여든다',
     weak: ['imp', 'ghoul'], strong: ['naga', 'succubus'], boss: 'lich',
     sizes: [3, 3, 4, 4, 4, 4, 5, 5, 5], strongs: [0, 0, 0, 1, 1, 1, 1, 1, 1], bossPower: 7.5,
+    traits: ['strong', 'fastRecovery', 'berserker', 'frail'],
   },
 };
 
 export const DUNGEON_IDS = Object.keys(DUNGEONS) as DungeonId[];
 
-/** 던전 경험치 = 탑의 절반 */
-export const DUNGEON_XP_RATE = 0.5;
+/** 던전은 경험치 없음. 승리 시 영웅마다 이 확률로 던전 특성 하나 */
+export const DUNGEON_TRAIT_CHANCE = 0.06;
 /** 희귀 몬스터 등장 확률, 등장 시 재료 배수 */
 export const RARE_CHANCE = 0.05;
 export const RARE_MULT = 3;

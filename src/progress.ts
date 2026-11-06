@@ -1,7 +1,7 @@
 import type { Unit } from './battle/types';
-import { CHEST_CHANCE, DUNGEONS, DUNGEON_XP_RATE, RARE_MULT, dungeonPower, rollDrops, towerReward, type DungeonId } from './data/dungeons';
+import { CHEST_CHANCE, DUNGEONS, DUNGEON_TRAIT_CHANCE, RARE_MULT, rollDrops, towerReward, type DungeonId } from './data/dungeons';
 import { FLOORS } from './data/floors';
-import { FATIGUE_DUNGEON, FATIGUE_TOWER, XP_PER_FLOOR, addFatigue, addLog, gainXp, injuryDuration, type Hero } from './data/heroes';
+import { FATIGUE_DUNGEON, FATIGUE_TOWER, addFatigue, addLog, gainXp, injuryDuration, towerXp, type Hero } from './data/heroes';
 import { DUR_DUNGEON, DUR_LOSS, DUR_TOWER, TOWER_WEAPON_LOSS, addMats, weaponName, type Materials } from './data/items';
 import { MONSTERS, type MonsterId } from './data/monsters';
 import { FAMILIES, type Family } from './data/races';
@@ -14,6 +14,8 @@ export interface HeroReport {
   fate: 'ok' | 'injured' | 'dead';
   levelBefore: number;
   levelAfter: number;
+  /** 얻은 경험치 */
+  xp: number;
   /** 특성 변화 등 결과 화면에 띄울 문장 */
   notes: { text: string; tone: 'good' | 'bad' }[];
 }
@@ -66,7 +68,7 @@ export function applyBattleResult(
   for (const u of allies) {
     const hero = d.heroes.find((h) => h.id === u.id);
     if (!hero) continue;
-    const r: HeroReport = { hero, fate: 'ok', levelBefore: hero.level, levelAfter: hero.level, notes: [] };
+    const r: HeroReport = { hero, fate: 'ok', levelBefore: hero.level, levelAfter: hero.level, xp: 0, notes: [] };
     const log = (text: string, tone: 'info' | 'good' | 'bad' | 'death' = 'info') => addLog(hero, text, tone, now);
 
     // 기록
@@ -81,9 +83,9 @@ export function applyBattleResult(
         hero.bestCleared = floor;
         log(boss ? `${floor}층 ${kindName(boss)} 처치` : `${floor}층 첫 돌파`, 'good');
       }
-      const ups = gainXp(hero, XP_PER_FLOOR * floor);
+      r.xp = towerXp(floor, hero.level, firstClear);
+      gainXp(hero, r.xp);
       for (let lv = r.levelBefore + 1; lv <= hero.level; lv++) if (lv % 5 === 0) log(`레벨 ${lv} 달성`, 'good');
-      void ups;
 
       if (u.down) {
         r.fate = 'injured';
@@ -243,14 +245,18 @@ export function applyDungeonResult(
   for (const u of allies) {
     const hero = d.heroes.find((h) => h.id === u.id);
     if (!hero) continue;
-    const r: HeroReport = { hero, fate: 'ok', levelBefore: hero.level, levelAfter: hero.level, notes: [] };
+    const r: HeroReport = { hero, fate: 'ok', levelBefore: hero.level, levelAfter: hero.level, xp: 0, notes: [] };
     if (hero.record.battles === 0) addLog(hero, `${dg.name}에서 첫 출전`, 'info', now);
     recordBattle(hero, u, r, rand, now);
     addFatigue(hero, FATIGUE_DUNGEON, now);
     if (win) {
       hero.record.wins++;
-      gainXp(hero, Math.round(XP_PER_FLOOR * dungeonPower(dungeon, floor) * DUNGEON_XP_RATE));
-      for (let l = r.levelBefore + 1; l <= hero.level; l++) if (l % 5 === 0) addLog(hero, `레벨 ${l} 달성`, 'good', now);
+      // 경험치 없음. 대신 던전마다 정해진 특성을 확률로 얻음
+      if (rand() < DUNGEON_TRAIT_CHANCE) {
+        const pool = dg.traits;
+        const id = pool[Math.floor(rand() * pool.length)];
+        gainTrait(hero, r, { id, v: rollValue(rand, TRAITS[id].kind) }, `${dg.name}에서 단련`, now);
+      }
       if (firstClear && floor === 10) addLog(hero, `${dg.name} 10층 ${MONSTERS[dg.boss].name} 처치`, 'good', now);
     }
     if (u.down) {
@@ -258,6 +264,9 @@ export function applyDungeonResult(
       hero.status = 'injured';
       hero.injuredUntil = now + injuryDuration(hero);
       addLog(hero, `${dg.name} ${floor}층에서 중상 (${u.downedBy ? `${u.downedBy.name}의 ${u.downedBy.skill}` : '부상'})`, 'bad', now);
+      // 트라우마 (탑과 같은 확률)
+      const fam = u.downedBy?.family as Family | undefined;
+      if (fam && rand() < P_TRAUMA_SELF) gainTrait(hero, r, { id: 'trauma', v: rollValue(rand, 'bad'), family: fam }, `${u.downedBy!.name}에게 쓰러짐`, now);
     }
     wear(hero, r, DUR_DUNGEON + (u.down || !win ? DUR_LOSS : 0));
     r.levelAfter = hero.level;

@@ -1,6 +1,6 @@
 import { scoutRisk, type Risk } from '../battle/scout';
 import { FLOORS, TOP_FLOOR, buildEnemies, themeOf } from '../data/floors';
-import { FATIGUE_TOWER, canAfford, fatigueLevel, heroRace, heroToUnit } from '../data/heroes';
+import { FATIGUE_TOWER, canAfford, fatigueLevel, heroRace, heroToUnit, towerXp } from '../data/heroes';
 import { MONSTERS } from '../data/monsters';
 import { game, living, readyFormation, save } from '../state';
 import { FormationPanel } from '../ui/formationUi';
@@ -129,7 +129,13 @@ export class TowerScene extends Page {
         ey += Math.max(58, note.height + 36);
       }
     }
-    this.add.text(x + 20, y + h - 14, '자동 전투 · 후퇴 불가 · 클리어 후 귀환', textStyle(18, C.faint)).setOrigin(0, 1);
+    // 경험치 (레벨이 층보다 많이 높으면 줄어듦)
+    const first = this.floor > game.data.cleared;
+    const team = readyFormation(FATIGUE_TOWER);
+    const xps = team.map((t) => towerXp(this.floor, t.hero.level, first));
+    const xpText = xps.length ? (Math.min(...xps) === Math.max(...xps) ? `${xps[0]}` : `${Math.min(...xps)}~${Math.max(...xps)}`) : `${towerXp(this.floor, 1, first)}`;
+    this.add.text(x + w - 20, y + h - 14, `경험치 +${xpText}${first ? ' · 첫 2배' : ''}`, textStyle(18, '#9fd0ff')).setOrigin(1, 1);
+    this.add.text(x + 20, y + h - 14, '후퇴 불가', textStyle(18, C.faint)).setOrigin(0, 1);
   }
 
   private drawFormation(): void {

@@ -1,5 +1,6 @@
-import { DUNGEONS, DUNGEON_FLOORS, DUNGEON_IDS, DUNGEON_XP_RATE, RARE_CHANCE, dungeonDrops, dungeonLineup, dungeonPower, type DungeonId } from '../data/dungeons';
-import { FATIGUE_DUNGEON, XP_PER_FLOOR, canAfford } from '../data/heroes';
+import { DUNGEONS, DUNGEON_FLOORS, DUNGEON_IDS, DUNGEON_TRAIT_CHANCE, RARE_CHANCE, dungeonDrops, dungeonLineup, dungeonPower, type DungeonId } from '../data/dungeons';
+import { FATIGUE_DUNGEON, canAfford } from '../data/heroes';
+import { TRAITS } from '../data/traits';
 import { MATERIALS, matId } from '../data/items';
 import { MONSTERS } from '../data/monsters';
 import { FAMILIES } from '../data/races';
@@ -32,7 +33,7 @@ export class DungeonScene extends Page {
     const floor = Math.min(DungeonScene.floor[sel] ?? open, open);
 
     this.add.text(32, PAGE_TOP + 52, '던전', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    this.add.text(170, PAGE_TOP + 58, '재료 파밍 · 죽지 않음', textStyle(22, C.dim)).setOrigin(0, 0.5);
+    this.add.text(170, PAGE_TOP + 58, '재료·특성 · 쓰러지면 중상', textStyle(22, C.dim)).setOrigin(0, 0.5);
     const ready = living().filter((h) => h.status === 'ready' && canAfford(h, FATIGUE_DUNGEON)).length;
     this.add.text(W - 28, PAGE_TOP + 58, `출전 가능 영웅 ${ready}명`, textStyle(18, C.faint)).setOrigin(1, 0.5);
 
@@ -72,7 +73,7 @@ export class DungeonScene extends Page {
     }
 
     const power = dungeonPower(sel, floor);
-    this.add.text(px + 20, py + 150, `${floor}층 · 적 강함 탑 ${Math.round(power)}층 수준 · 경험치 ${Math.round(XP_PER_FLOOR * power * DUNGEON_XP_RATE)}`, textStyle(18, '#9fd0ff'));
+    this.add.text(px + 20, py + 150, `${floor}층 · 적 강함 탑 ${Math.round(power)}층 수준 · 경험치 없음`, textStyle(18, '#9fd0ff'));
 
     // 적
     const counts = new Map<string, number>();
@@ -95,7 +96,7 @@ export class DungeonScene extends Page {
       rx += c.width + 8;
     }
     if (floor > prog.best) this.add.text(rx + 4, py + 271, '첫 클리어 ×2', textStyle(18, C.goldStr)).setOrigin(0, 0.5);
-    this.add.text(px + 20, py + ph - 10, `쓰러지면 중상 · 희귀 몬스터 ${Math.round(RARE_CHANCE * 100)}%`, textStyle(18, C.faint)).setOrigin(0, 1);
+    this.add.text(px + 20, py + ph - 10, `특성 ${Math.round(DUNGEON_TRAIT_CHANCE * 100)}%: ${d.traits.map((t) => TRAITS[t].name).join('·')} · 희귀 몬스터 ${Math.round(RARE_CHANCE * 100)}%`, textStyle(18, C.faint)).setOrigin(0, 1);
 
     this.formation.draw(py + ph + 18, FATIGUE_DUNGEON);
 

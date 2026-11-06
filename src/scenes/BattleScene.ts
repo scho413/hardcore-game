@@ -571,10 +571,10 @@ export class BattleScene extends Phaser.Scene {
         text = `중상 · ${fmtTime((r.hero.injuredUntil ?? 0) - Date.now())} 후 회복`;
         color = '#ff9a4a';
       } else if (r.levelAfter > r.levelBefore) {
-        text = `Lv ${r.levelBefore} → ${r.levelAfter}`;
+        text = `+${r.xp} 경험치 · Lv ${r.levelBefore} → ${r.levelAfter}`;
         color = C.goldStr;
       } else {
-        text = win ? `Lv ${r.levelAfter} · 경험치 획득` : '생존';
+        text = win ? (r.xp > 0 ? `Lv ${r.levelAfter} · +${r.xp} 경험치` : `Lv ${r.levelAfter}`) : '생존';
         color = C.dim;
       }
       if (r.fate === 'injured' && r.levelAfter > r.levelBefore) text = `Lv ${r.levelAfter} · ${text}`;

@@ -11,7 +11,7 @@ import { generateHero, heroToUnit, type Hero } from '../src/data/heroes';
 const N = Number(process.argv[2] ?? 500);
 const ctx = () => ({ names: new Set<string>(), looks: new Set<string>() });
 
-/** 레벨 f에서 f층을 깨면 딱 1레벨 오르도록 경험치가 짜여 있음 → f층 도전 시 레벨 f */
+/** 기준: f층 도전 시 레벨 f (첫 클리어만으로는 조금 모자라고, 클리어한 층 반복으로 맞춤) */
 const levelFor = (floor: number) => floor;
 
 const LINEUP: ClassId[] = ['knight', 'warrior', 'priest', 'archer', 'mage'];
