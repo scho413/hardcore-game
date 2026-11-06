@@ -5,11 +5,12 @@ import { FORMATIONS, slotPosition, type FormationId } from './formations';
 import { GRADES, SPECIALS, weaponUsable, type Weapon } from './items';
 import { randomName } from './names';
 import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
-import { rollBirthTraits, traitEffects, type HeroTrait } from './traits';
+import { gradeTraits, rollBirthTraits, traitEffects, type HeroTrait } from './traits';
 
 export type { Gender, Look };
 
-export type HeroStatus = 'ready' | 'injured' | 'dead';
+/** training = 훈련장에 맡김 (출전 불가) */
+export type HeroStatus = 'ready' | 'injured' | 'training' | 'dead';
 
 /** 일대기 한 줄 (GDD 3.7) */
 export interface LogEntry {
@@ -22,6 +23,8 @@ export interface Hero {
   id: string;
   name: string;
   classId: ClassId;
+  /** 영웅 등급 0~5 (일반~초월, items.GRADES와 같은 이름·색) */
+  grade: number;
   gender: Gender;
   race: RaceId;
   /** 수인 갈래 */
@@ -53,9 +56,19 @@ export interface Hero {
   diedAt?: number;
   diedBy?: string;
   recruitedAt: number;
+  /** 훈련장: 맡긴 시각, 마지막으로 경험치를 준 시각 */
+  trainSince?: number;
+  trainAt?: number;
 }
 
 // ─── 수치 (GDD 16 미정 사항 → 임시값) ───
+/** 영웅 등급별 개체값 범위 (GDD 8) */
+export const GRADE_STAT: [number, number][] = [[-0.06, 0.06], [-0.02, 0.08], [0.04, 0.12], [0.1, 0.18], [0.16, 0.24], [0.24, 0.32]];
+/** 병원 레벨에 따른 회복 속도 (state.refresh가 설정) */
+let recoveryScale = 1;
+export function setRecoveryScale(x: number): void {
+  recoveryScale = x;
+}
 /** 중상 회복 시간 */
 export const INJURY_MS = 5 * 60 * 1000;
 // ─── 경험치 (GDD 3.6) ───
@@ -90,7 +103,7 @@ export const FATIGUE_RECOVER_MS = 6 * 60 * 1000;
 
 /** 지금 피로 (시간 경과 반영, 소수) */
 export function fatigueNow(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
-  return Math.max(0, (h.fatigue ?? 0) - (now - (h.fatigueAt ?? now)) / FATIGUE_RECOVER_MS);
+  return Math.max(0, (h.fatigue ?? 0) - ((now - (h.fatigueAt ?? now)) * recoveryScale) / FATIGUE_RECOVER_MS);
 }
 
 /** 화면·능력치 계산용 피로 (올림 정수) */
@@ -103,7 +116,7 @@ export function canAfford(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, cost: number, 
 }
 
 export function addFatigue(h: Hero, cost: number, now = Date.now()): void {
-  h.fatigue = Math.min(FATIGUE_MAX, fatigueNow(h, now) + cost);
+  h.fatigue = Math.max(0, Math.min(FATIGUE_MAX, fatigueNow(h, now) + cost));
   h.fatigueAt = now;
 }
 
@@ -111,7 +124,7 @@ export function addFatigue(h: Hero, cost: number, now = Date.now()): void {
 export function fatigueNextMs(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
   const f = fatigueNow(h, now);
   if (f <= 0) return 0;
-  return (f - Math.floor(f - 1e-9)) * FATIGUE_RECOVER_MS;
+  return ((f - Math.floor(f - 1e-9)) * FATIGUE_RECOVER_MS) / recoveryScale;
 }
 
 /** 종족 출현 비율 */
@@ -137,7 +150,7 @@ export function heroLookKey(h: Pick<Hero, 'race' | 'beast' | 'classId' | 'look'>
   return lookSignature(h.race, h.beast, h.classId, h.look);
 }
 
-export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; gender?: Gender; now?: number } = {}): Hero {
+export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; gender?: Gender; now?: number; grade?: number } = {}): Hero {
   const pick = <T,>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
   const classId = opts.classId ?? pick(CLASS_IDS);
   const now = opts.now ?? Date.now();
@@ -156,7 +169,10 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
   }
   const beast = race === 'beastfolk' ? pick(BEAST_KINDS) : undefined;
   const gender: Gender = opts.gender ?? (rand() < 0.5 ? 'm' : 'f');
-  const vary = () => Math.round((0.92 + rand() * 0.16) * 100) / 100;
+  // 개체값: 등급이 높을수록 높음 (일반 -6~+6%, 초월 +24~32%)
+  const grade = opts.grade ?? 0;
+  const [lo, hi] = GRADE_STAT[grade];
+  const vary = () => Math.round((1 + lo + rand() * (hi - lo)) * 100) / 100;
 
   // 같은 얼굴이 나오면 다시 뽑기 (GDD 3.1: 모든 영웅의 얼굴이 달라야 함)
   let look = randomLook(rand, race, beast, classId, gender);
@@ -170,13 +186,14 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
     id,
     name,
     classId,
+    grade,
     gender,
     race,
     beast,
     role: CLASSES[classId].roles[0].id,
     level: 1,
     xp: 0,
-    traits: rollBirthTraits(rand),
+    traits: gradeTraits(rand, rollBirthTraits(rand), grade),
     statMul: { hp: vary(), atk: vary(), def: vary(), spd: vary() },
     look,
     status: 'ready',
@@ -319,7 +336,7 @@ export function gainXp(h: Hero, xp: number): number {
 
 export function injuryDuration(h: Hero): number {
   const te = traitEffects(h.traits, { floor: 1 });
-  return Math.round(INJURY_MS * Math.max(0.25, 1 + te.injury));
+  return Math.round((INJURY_MS * Math.max(0.25, 1 + te.injury)) / recoveryScale);
 }
 
 export function addLog(h: Hero, text: string, tone: LogEntry['tone'] = 'info', t = Date.now()): void {

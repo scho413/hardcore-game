@@ -12,8 +12,8 @@ export interface FloorDef {
 export const THEMES = [{ from: 1, to: 10, name: '고블린 소굴' }];
 
 export const FLOORS: FloorDef[] = [
-  { floor: 1, enemies: ['goblin', 'goblin', 'goblin'] },
-  { floor: 2, enemies: ['goblin', 'goblin', 'goblin_archer'] },
+  { floor: 1, enemies: ['goblin', 'goblin'] },
+  { floor: 2, enemies: ['goblin', 'goblin', 'goblin'] },
   { floor: 3, enemies: ['goblin', 'hobgoblin', 'goblin_archer', 'goblin_archer'] },
   { floor: 4, enemies: ['goblin', 'wolf_rider', 'hobgoblin', 'goblin_shaman', 'goblin_archer'] },
   { floor: 5, title: '중간보스', enemies: ['goblin', 'goblin_chief', 'goblin'] },

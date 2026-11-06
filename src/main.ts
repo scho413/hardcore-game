@@ -5,7 +5,8 @@ import { TowerScene } from './scenes/TowerScene';
 import { BattleScene } from './scenes/BattleScene';
 import { CodexScene } from './scenes/CodexScene';
 import { HeroesScene } from './scenes/HeroesScene';
-import { BaseScene } from './scenes/BaseScene';
+import { TownScene } from './scenes/TownScene';
+import { SmithyScene } from './scenes/SmithyScene';
 import { DungeonScene } from './scenes/DungeonScene';
 import { ForgeScene } from './scenes/ForgeScene';
 import { C, FONT, H, W } from './ui/theme';
@@ -32,6 +33,6 @@ loadFont().then(() => {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [BootScene, TowerScene, HeroesScene, CodexScene, BattleScene, BaseScene, DungeonScene, ForgeScene],
+    scene: [BootScene, TowerScene, HeroesScene, CodexScene, BattleScene, TownScene, SmithyScene, DungeonScene, ForgeScene],
   });
 });

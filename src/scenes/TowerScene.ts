@@ -54,7 +54,7 @@ export class TowerScene extends Page {
       const floor = TOP_FLOOR - i;
       const def = FLOORS[floor - 1];
       const y = top + i * rowH;
-      const open = floor <= game.data.cleared + 1;
+      const open = floor <= game.data.cleared + 1 || game.data.test;
       const cleared = floor <= game.data.cleared;
       const sel = floor === this.floor;
       const g = this.add.graphics();
@@ -100,7 +100,7 @@ export class TowerScene extends Page {
     const ft = this.add.text(x + 20, y + 38, `${this.floor}층${def.title ? ` ${def.title}` : ''}`, textStyle(33, def.title ? C.redStr : C.text));
 
     // 처음 도전하는 층은 정보 없음 (GDD 5.2)
-    const known = this.floor <= game.data.cleared || game.data.known.includes(this.floor);
+    const known = this.floor <= game.data.cleared || game.data.known.includes(this.floor) || game.data.test;
     const rx = Math.max(x + 20 + ft.width + 24, x + 200);
     if (!known) {
       this.add.text(rx, y + 30, '위험도', textStyle(18, C.dim));
@@ -152,5 +152,7 @@ export class TowerScene extends Page {
       this.go('battle', { floor: this.floor });
     }, { size: team.length === 0 ? 22 : 33 });
     b.setEnabled(team.length > 0);
+    if (game.data.tutorial === 0) this.hint(W / 2, y - 80, '탑 1층에 도전해 보세요');
+    else if (game.data.tutorial < 3) this.hint(W / 2, y - 80, '기지로 돌아가세요');
   }
 }

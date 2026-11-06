@@ -21,6 +21,7 @@ import {
   type Difficulty,
   type Weapon,
 } from '../data/items';
+import { SMITHY_MAX_DIFF, dismantleGold } from '../data/base';
 import { game, living, save } from '../state';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
@@ -28,21 +29,26 @@ import { button, panel } from '../ui/widgets';
 
 const CLASS_ORDER: ClassId[] = ['knight', 'warrior', 'archer', 'mage', 'priest'];
 
-/** 기지 탭 = 대장간 (GDD 7): 재료 확인 → 무기 종류·난이도 선택 → 미니게임. 보관함·수리 */
-export class BaseScene extends Page {
+/** 대장간 (GDD 7, 기지 시설): 재료 확인 → 무기 종류·난이도 선택 → 미니게임. 보관함·수리·분해 */
+export class SmithyScene extends Page {
   protected tab = 'base' as const;
   private static cls: ClassId = 'knight';
   private static diff: Difficulty = 1;
+  private armed: string | null = null;
   private listPage = 0;
 
   constructor() {
-    super('base');
+    super('smithy');
   }
 
   protected draw(): void {
     const d = game.data;
-    this.add.text(32, PAGE_TOP + 52, '대장간', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    this.add.text(220, PAGE_TOP + 58, '직업 전용 무기 제작 · 수리', textStyle(22, C.dim)).setOrigin(0, 0.5);
+    button(this, 70, PAGE_TOP + 52, 100, 56, '◀ 기지', () => this.go('base'), { fill: C.panelHi, textColor: C.text, size: 18 });
+    this.add.text(136, PAGE_TOP + 52, '대장간', textStyle(44, C.goldStr)).setOrigin(0, 0.5);
+    this.add.text(290, PAGE_TOP + 58, `Lv ${d.facilities.smithy}`, textStyle(22, C.dim)).setOrigin(0, 0.5);
+    this.add.text(W - 28, PAGE_TOP + 58, `골드 ${d.gold}`, textStyle(22, C.goldStr)).setOrigin(1, 0.5);
+    const maxDiff = d.test ? 5 : SMITHY_MAX_DIFF[Math.max(1, d.facilities.smithy) - 1];
+    if (SmithyScene.diff > maxDiff) SmithyScene.diff = maxDiff as Difficulty;
 
     // ── 재료 ──
     const px = 28;
@@ -67,31 +73,34 @@ export class BaseScene extends Page {
     // ── 무기 종류 ──
     const bw = (pw - 4 * 8) / 5;
     CLASS_ORDER.forEach((c, i) => {
-      const on = c === BaseScene.cls;
+      const on = c === SmithyScene.cls;
       button(this, px + bw / 2 + i * (bw + 8), y + 26, bw, 52, CLASSES[c].name, () => {
-        BaseScene.cls = c;
+        SmithyScene.cls = c;
         this.requestRender();
       }, { fill: on ? C.gold : C.panelHi, textColor: on ? '#1b1626' : C.text, size: 22 });
     });
     y += 64;
 
     // ── 난이도 (3 × 2) ──
-    const cls = BaseScene.cls;
+    const cls = SmithyScene.cls;
     const tw = (pw - 2 * 8) / 3;
     DIFFICULTIES.forEach((df, i) => {
       const diff = i as Difficulty;
-      const on = diff === BaseScene.diff;
+      const on = diff === SmithyScene.diff;
       const ok = canCraft(d.materials, cls, diff);
       const top = GRADES[df.maxGrade];
-      button(this, px + tw / 2 + (i % 3) * (tw + 8), y + 24 + Math.floor(i / 3) * 54, tw, 46, `${df.name}${ok ? '' : ' ·부족'}`, () => {
-        BaseScene.diff = diff;
+      const locked = diff > maxDiff;
+      const lockLv = SMITHY_MAX_DIFF.findIndex((m) => m >= diff) + 1;
+      const bt = button(this, px + tw / 2 + (i % 3) * (tw + 8), y + 24 + Math.floor(i / 3) * 54, tw, 46, locked ? `${df.name} ·Lv${lockLv}` : `${df.name}${ok ? '' : ' ·부족'}`, () => {
+        SmithyScene.diff = diff;
         this.requestRender();
       }, { fill: on ? top.color : C.panelHi, textColor: on ? '#1b1626' : ok ? top.str : C.faint, size: 18 });
+      bt.setEnabled(!locked);
     });
     y += 112;
 
     // ── 제작 정보 ──
-    const diff = BaseScene.diff;
+    const diff = SmithyScene.diff;
     const df = DIFFICULTIES[diff];
     const ph = 214;
     panel(this, px, y, pw, ph);
@@ -175,7 +184,24 @@ export class BaseScene extends Page {
       g.fillStyle(w.dur > 30 ? C.green : w.dur > 0 ? 0xffa03a : C.red, 1).fillRect(dx, y + 14, (dw * w.dur) / DUR_MAX, 8);
       this.add.text(dx + dw / 2, y + 38, w.dur > 0 ? `${w.dur}/${DUR_MAX}` : '수리 필요', textStyle(18, w.dur > 0 ? C.faint : C.redStr)).setOrigin(0.5);
       const cost = repairCost(w);
-      if (cost.length) {
+      if (!owner && this.armed === w.id) {
+        // 분해 확인
+        const g2 = dismantleGold(w.grade, w.tier);
+        button(this, px + pw - 70, y + (rowH - 8) / 2, 124, 44, `분해 +${g2}G`, () => {
+          d.stash.splice(d.stash.indexOf(w), 1);
+          d.gold += g2;
+          const k = matId(WEAPON_TYPES[w.cls].main, w.tier);
+          d.materials[k] = (d.materials[k] ?? 0) + 1;
+          this.armed = null;
+          save();
+          this.requestRender();
+        }, { size: 18, fill: C.red, textColor: '#ffffff' });
+      } else if (!owner && !cost.length) {
+        button(this, px + pw - 70, y + (rowH - 8) / 2, 124, 44, '분해', () => {
+          this.armed = w.id;
+          this.requestRender();
+        }, { size: 18, fill: C.panelHi, textColor: C.text });
+      } else if (cost.length) {
         const can = hasMats(d.materials, cost);
         const rb = button(this, px + pw - 70, y + (rowH - 8) / 2, 124, 44, `수리 ${cost[0].n}`, () => {
           spendMats(d.materials, cost);

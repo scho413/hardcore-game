@@ -29,7 +29,7 @@ export class DungeonScene extends Page {
     const sel = DungeonScene.dungeon;
     const d = DUNGEONS[sel];
     const prog = game.data.dungeons[sel];
-    const open = Math.min(DUNGEON_FLOORS, prog.best + 1);
+    const open = game.data.test ? DUNGEON_FLOORS : Math.min(DUNGEON_FLOORS, prog.best + 1);
     const floor = Math.min(DungeonScene.floor[sel] ?? open, open);
 
     this.add.text(32, PAGE_TOP + 52, '던전', textStyle(55, C.goldStr)).setOrigin(0, 0.5);

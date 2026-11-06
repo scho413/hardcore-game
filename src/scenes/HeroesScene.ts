@@ -1,14 +1,15 @@
 import { ensureHeroTextures } from '../art/textures';
 import { CLASSES, roleOf } from '../data/classes';
-import { ROSTER_MAX, heroRace, heroStats, xpToNext, type Hero } from '../data/heroes';
+import { heroRace, heroStats, xpToNext, type Hero } from '../data/heroes';
 import { slotPosition } from '../data/formations';
 import { TRAITS, TRAIT_MAX, traitDesc, traitName } from '../data/traits';
 import { drawChronicle } from '../ui/chronicle';
-import { game, living, recruit, resetProgress, save } from '../state';
+import { game, living, resetProgress, rosterCap, save } from '../state';
+import type { MaterialId } from '../data/items';
 import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { weaponIcon } from '../art/itemArt';
 import { GRADES, specialText, weaponDesc, weaponName } from '../data/items';
-import { addLog } from '../data/heroes';
+import { addFatigue, addLog, fatigueLevel } from '../data/heroes';
 import { Page } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
@@ -42,19 +43,37 @@ export class HeroesScene extends Page {
   protected draw(): void {
     const heroes = living();
     this.add.text(32, PAGE_TOP + 52, '영웅', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    this.add.text(150, PAGE_TOP + 58, `${heroes.length} / ${ROSTER_MAX}명`, textStyle(22, C.dim)).setOrigin(0, 0.5);
+    this.add.text(150, PAGE_TOP + 58, `${heroes.length} / ${rosterCap()}명 · 모집은 기지의 모집소`, textStyle(22, C.dim)).setOrigin(0, 0.5);
 
-    // 임시 모집: 4단계 모집소가 생기기 전까지 테스트용
-    const full = heroes.length >= ROSTER_MAX;
-    const rb = button(this, W - 290, 140, 250, 64, full ? '로스터 가득 참' : '모집 (임시·무료)', () => {
-      const h = recruit();
-      if (h) {
-        save();
-        this.flash = `${h.name}(${CLASSES[h.classId].name}) 합류`;
-      }
+    // 테스트 모드 (출시 전 제거): 모든 층 도전·정찰, 즉시 건설, 자원·회복
+    const gd = game.data;
+    button(this, W - 270, 140, 210, 64, gd.test ? '테스트 켜짐' : '테스트 모드', () => {
+      gd.test = !gd.test;
+      if (gd.test && gd.tutorial < 3) gd.tutorial = 3;
+      save();
       this.requestRender();
-    }, { size: 22 });
-    rb.setEnabled(!full);
+    }, { fill: gd.test ? 0xe0503a : C.panelHi, textColor: gd.test ? '#ffffff' : C.dim, size: 18 });
+    if (gd.test) {
+      button(this, 110, 140, 160, 64, '자원 +', () => {
+        gd.gold += 5000;
+        for (const k of ['metal', 'wood', 'crystal']) for (const t of [1, 2, 3]) gd.materials[`${k}${t}` as MaterialId] = (gd.materials[`${k}${t}` as MaterialId] ?? 0) + 20;
+        this.flash = '골드 +5000, 재료 +20';
+        save();
+        this.requestRender();
+      }, { fill: C.panelHi, textColor: C.text, size: 18 });
+      button(this, 280, 140, 160, 64, '전원 회복', () => {
+        for (const h of living()) {
+          h.fatigue = 0;
+          if (h.status === 'injured') {
+            h.status = 'ready';
+            delete h.injuredUntil;
+          }
+        }
+        this.flash = '기력·중상 회복';
+        save();
+        this.requestRender();
+      }, { fill: C.panelHi, textColor: C.text, size: 18 });
+    }
     button(this, W - 90, 140, 130, 64, this.resetArmed ? '한 번 더' : '처음부터', () => {
       if (!this.resetArmed) {
         this.resetArmed = true;
@@ -69,7 +88,7 @@ export class HeroesScene extends Page {
       }
       this.requestRender();
     }, { fill: C.panelHi, textColor: this.resetArmed ? C.redStr : C.dim, size: 18 });
-    if (this.flash) this.add.text(32, 140, this.flash, textStyle(18, C.greenStr)).setOrigin(0, 0.5);
+    if (this.flash) this.add.text(W - 28, PAGE_TOP + 92, this.flash, textStyle(18, C.greenStr)).setOrigin(1, 0.5);
 
     const cw = (W - 56 - 14) / 2;
     const ch = 148;
@@ -120,13 +139,36 @@ export class HeroesScene extends Page {
     this.add.image(x + 124, y + 124, `hero-${h.id}`).setScale(6);
 
     const tx = x + 248;
-    this.add.text(tx, y + 28, h.name, textStyle(44));
+    const hn = this.add.text(tx, y + 28, h.name, textStyle(44, GRADES[h.grade ?? 0].str));
+    this.add.text(hn.x + hn.width + 12, y + 44, GRADES[h.grade ?? 0].name, textStyle(22, GRADES[h.grade ?? 0].str));
     this.add.text(tx, y + 90, `${h.gender === 'f' ? '여성' : '남성'} · ${classRole(h)} · Lv ${h.level}`, textStyle(22, C.dim));
     raceChip(this, tx, y + 136, h, 18);
     this.add.text(tx, y + 160, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
     xpBar(this, tx, y + 186, w - 248 - 24, h);
     const st = statusLine(h);
-    this.add.text(tx, y + 200, h.status === 'ready' ? fatigueDetail(h) : st.text, textStyle(18, h.status === 'ready' ? st.color : st.color));
+    this.add.text(tx, y + 200, h.status === 'ready' ? fatigueDetail(h) : st.text, textStyle(18, st.color));
+    // 물약 (연금소)
+    const pot = game.data.potions;
+    let bx = tx;
+    if (h.status !== 'dead' && (pot.stamina ?? 0) > 0 && fatigueLevel(h) > 0) {
+      button(this, bx + 80, y + 238, 160, 32, `기력 물약 ${pot.stamina}`, () => {
+        pot.stamina = (pot.stamina ?? 0) - 1;
+        addFatigue(h, -3);
+        save();
+        this.requestRender();
+      }, { size: 18, fill: 0x8fd0ff });
+      bx += 170;
+    }
+    if (h.status === 'injured' && (pot.cure ?? 0) > 0) {
+      button(this, bx + 80, y + 238, 160, 32, `치료 물약 ${pot.cure}`, () => {
+        pot.cure = (pot.cure ?? 0) - 1;
+        h.status = 'ready';
+        delete h.injuredUntil;
+        addLog(h, '치료 물약으로 회복', 'good');
+        save();
+        this.requestRender();
+      }, { size: 18, fill: C.green });
+    }
 
     // 능력치 (진형 효과 제외)
     const s = heroStats(h);
@@ -138,7 +180,7 @@ export class HeroesScene extends Page {
       ['치명타', `${Math.round(s.crit * 100)}%`],
       ['천적', FAMILIES[heroRace(h).favored].name],
     ];
-    const sy = y + 250;
+    const sy = y + 266;
     this.add.text(x + 24, sy, '능력치', textStyle(22, C.goldStr));
     rows.forEach(([k, v], i) => {
       const cx = x + 24 + (i % 3) * ((w - 48) / 3);

@@ -6,6 +6,7 @@
 - 1단계: [docs/STAGE1.md](docs/STAGE1.md) — 자동전투 + 탑 10층
 - 2단계: [docs/STAGE2.md](docs/STAGE2.md) — 랜덤 영웅·종족, 영구 사망, 귀환, 추모의 벽, 적 20종
 - 3단계: [docs/STAGE3.md](docs/STAGE3.md) — 던전 3곳 × 10층·소탕, 대장간 난이도 6단계·6등급, 무기 특수 능력·내구도, 기력
+- 4단계: [docs/STAGE4.md](docs/STAGE4.md) — 기지 마을·시설 6개, 골드, 모집소(영웅 등급), 튜토리얼, 테스트 모드 (4-1)
 
 ## 실행
 

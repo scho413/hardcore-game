@@ -7,6 +7,7 @@ import { MONSTERS, type MonsterId } from './data/monsters';
 import { FAMILIES, type Family } from './data/races';
 import { TRAITS, canAddTrait, rollValue, traitName, type HeroTrait } from './data/traits';
 import type { SaveData } from './state';
+import { dungeonGold, towerGold } from './data/base';
 
 export interface HeroReport {
   hero: Hero;
@@ -26,6 +27,7 @@ export interface BattleResult {
   rewards: Materials;
   /** 결과 화면에 띄울 소식 (첫 클리어, 보물 상자 등) */
   events: string[];
+  gold: number;
 }
 
 // ─── 전투 중 특성 획득·극복 확률 (GDD 3.5, 초안) ───
@@ -109,6 +111,12 @@ export function applyBattleResult(
       if (def.title && !u.down && u.lowestHp <= 0.2 && rand() < P_COMEBACK) {
         gain(hero, r, { id: 'comeback', v: rollValue(rand, 'good') }, `${floor}층 보스전에서 빈사로 생존`);
       }
+    } else if (u.down && d.tutorial === 0) {
+      // 튜토리얼 첫 전투는 지더라도 죽지 않음 (중상)
+      r.fate = 'injured';
+      hero.status = 'injured';
+      hero.injuredUntil = now + injuryDuration(hero);
+      log(`${floor}층에서 중상 (튜토리얼)`, 'bad');
     } else if (u.down) {
       r.fate = 'dead';
       hero.status = 'dead';
@@ -165,7 +173,10 @@ export function applyBattleResult(
     const h = d.heroes.find((x) => x.id === id);
     return h && h.status !== 'dead' ? id : null;
   });
-  return { reports, rewards, events: [] };
+  const gold = win ? towerGold(floor, firstClear) : 0;
+  d.gold += gold;
+  if (win && d.tutorial === 0) d.tutorial = 1;
+  return { reports, rewards, events: [], gold };
 
   function gain(hero: Hero, r: HeroReport, t: HeroTrait, why: string): void {
     gainTrait(hero, r, t, why, now);
@@ -288,5 +299,7 @@ export function applyDungeonResult(
     prog.clearLv[floor] = prev === undefined ? partyLv : Math.min(prev, partyLv);
   }
   addMats(d.materials, rewards);
-  return { reports, rewards, events };
+  const gold = win ? dungeonGold(floor) : 0;
+  d.gold += gold;
+  return { reports, rewards, events, gold };
 }
