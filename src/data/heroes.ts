@@ -1,4 +1,4 @@
-import { CLOTHS, lookSignature, randomLook, type Look } from '../art/heroArt';
+import { CLOTHS, lookSignature, randomLook, type Gender, type Look } from '../art/heroArt';
 import type { CombatFx, Stats, UnitInit } from '../battle/types';
 import { CLASSES, roleOf, statsAtLevel, type ClassId } from './classes';
 import { FORMATIONS, slotPosition, type FormationId } from './formations';
@@ -6,7 +6,7 @@ import { randomName } from './names';
 import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
 import { rollBirthTraits, traitEffects, type HeroTrait } from './traits';
 
-export type { Look };
+export type { Gender, Look };
 
 export type HeroStatus = 'ready' | 'injured' | 'dead';
 
@@ -21,6 +21,7 @@ export interface Hero {
   id: string;
   name: string;
   classId: ClassId;
+  gender: Gender;
   race: RaceId;
   /** 수인 갈래 */
   beast?: BeastKind;
@@ -82,7 +83,7 @@ export function heroLookKey(h: Pick<Hero, 'race' | 'beast' | 'classId' | 'look'>
   return lookSignature(h.race, h.beast, h.classId, h.look);
 }
 
-export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; now?: number } = {}): Hero {
+export function generateHero(rand: () => number, id: string, ctx: GenContext, opts: { classId?: ClassId; race?: RaceId; gender?: Gender; now?: number } = {}): Hero {
   const pick = <T,>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
   const classId = opts.classId ?? pick(CLASS_IDS);
   const now = opts.now ?? Date.now();
@@ -100,20 +101,22 @@ export function generateHero(rand: () => number, id: string, ctx: GenContext, op
     }
   }
   const beast = race === 'beastfolk' ? pick(BEAST_KINDS) : undefined;
+  const gender: Gender = opts.gender ?? (rand() < 0.5 ? 'm' : 'f');
   const vary = () => Math.round((0.92 + rand() * 0.16) * 100) / 100;
 
   // 같은 얼굴이 나오면 다시 뽑기 (GDD 3.1: 모든 영웅의 얼굴이 달라야 함)
-  let look = randomLook(rand, race, beast, classId);
-  for (let i = 0; i < 30 && ctx.looks.has(lookSignature(race, beast, classId, look)); i++) look = randomLook(rand, race, beast, classId);
+  let look = randomLook(rand, race, beast, classId, gender);
+  for (let i = 0; i < 30 && ctx.looks.has(lookSignature(race, beast, classId, look)); i++) look = randomLook(rand, race, beast, classId, gender);
   ctx.looks.add(lookSignature(race, beast, classId, look));
 
-  const name = randomName(rand, ctx.names, race);
+  const name = randomName(rand, ctx.names, race, gender);
   ctx.names.add(name);
 
   return {
     id,
     name,
     classId,
+    gender,
     race,
     beast,
     role: CLASSES[classId].roles[0].id,
@@ -163,7 +166,7 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   const m = race.mod;
   const formation = ctx.formation ?? 'basic';
   const row = ctx.slot !== undefined ? slotPosition(formation, ctx.slot).row : undefined;
-  const te = traitEffects(h.traits, { front: row === 'front', floor: ctx.floor ?? 1 });
+  const te = traitEffects(h.traits, { floor: ctx.floor ?? 1 });
   const role = roleOf(h.classId, h.role).mod ?? {};
   const fEff = FORMATIONS[formation].effects;
   const rowEff = row ? fEff[row] ?? {} : {};
@@ -230,7 +233,7 @@ export function gainXp(h: Hero, xp: number): number {
 }
 
 export function injuryDuration(h: Hero): number {
-  const te = traitEffects(h.traits, { front: false, floor: 1 });
+  const te = traitEffects(h.traits, { floor: 1 });
   return Math.round(INJURY_MS * Math.max(0.25, 1 + te.injury));
 }
 

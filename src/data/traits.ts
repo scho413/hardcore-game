@@ -8,9 +8,9 @@ export type TraitKind = 'good' | 'bad' | 'mixed';
 
 export type TraitId =
   // 좋음 (태어날 때)
-  | 'swift' | 'sturdy' | 'strong' | 'tough' | 'keen' | 'fastRecovery' | 'vanguard'
+  | 'swift' | 'sturdy' | 'strong' | 'tough' | 'keen' | 'fastRecovery'
   // 나쁨 (태어날 때)
-  | 'coward' | 'frail' | 'slow' | 'clumsy' | 'selfish' | 'whiner' | 'acrophobia' | 'skulker'
+  | 'coward' | 'frail' | 'slow' | 'clumsy' | 'selfish' | 'whiner' | 'acrophobia'
   // 양면 (태어날 때)
   | 'obese' | 'berserker' | 'ironSkin' | 'reckless' | 'cautious'
   // 전투 중 획득
@@ -44,7 +44,6 @@ export const TRAITS: Record<TraitId, TraitDef> = {
   tough: { id: 'tough', name: '단단함', kind: 'good', birth: true, desc: (v) => `방어력 +${v}%` },
   keen: { id: 'keen', name: '예리함', kind: 'good', birth: true, desc: (v) => `치명타 +${v / 2}%p` },
   fastRecovery: { id: 'fastRecovery', name: '빠른 회복', kind: 'good', birth: true, desc: (v) => `중상 회복 시간 -${v * 2.5}%`, conflicts: ['whiner'] },
-  vanguard: { id: 'vanguard', name: '앞장서는 자', kind: 'good', birth: true, desc: (v) => `전열일 때 방어력 +${v * 1.5}%`, conflicts: ['skulker'] },
 
   coward: { id: 'coward', name: '겁쟁이', kind: 'bad', birth: true, desc: (v) => `체력 30% 이하일 때 ${v}% 확률로 행동 포기`, conflicts: ['courage'] },
   frail: { id: 'frail', name: '허약함', kind: 'bad', birth: true, desc: (v) => `체력 -${v}%`, conflicts: ['sturdy'] },
@@ -53,7 +52,6 @@ export const TRAITS: Record<TraitId, TraitDef> = {
   selfish: { id: 'selfish', name: '이기적임', kind: 'bad', birth: true, desc: (v) => `주는 치유·버프 -${v * 2}%`, conflicts: ['devoted'] },
   whiner: { id: 'whiner', name: '엄살', kind: 'bad', birth: true, desc: (v) => `중상 회복 시간 +${v * 5}%`, conflicts: ['fastRecovery'] },
   acrophobia: { id: 'acrophobia', name: '고소공포증', kind: 'bad', birth: true, desc: (v) => `5층 이상에서 공격력·방어력 -${v}%` },
-  skulker: { id: 'skulker', name: '뒤에 숨는 자', kind: 'bad', birth: true, desc: (v) => `전열일 때 공격력·방어력 -${v * 1.5}%`, conflicts: ['vanguard'] },
 
   obese: { id: 'obese', name: '비만', kind: 'mixed', birth: true, desc: (v) => `체력 +${v}%, 속도 -${v}%` },
   berserker: { id: 'berserker', name: '광전사', kind: 'mixed', birth: true, desc: (v) => `쓰러진 아군 1명당 공격력 +${v}%, 방어력 -${v}%` },
@@ -128,7 +126,7 @@ export interface TraitEffect {
   fx: CombatFx;
 }
 
-export function traitEffects(list: HeroTrait[], ctx: { front: boolean; floor: number }): TraitEffect {
+export function traitEffects(list: HeroTrait[], ctx: { floor: number }): TraitEffect {
   const e: TraitEffect = { stat: { hp: 0, atk: 0, def: 0, spd: 0 }, crit: 0, injury: 0, fx: {} };
   const add = (k: keyof CombatFx, v: number) => ((e.fx[k] as number | undefined) = ((e.fx[k] as number | undefined) ?? 0) + v);
   const famAdd = (k: 'vsFamily' | 'fromFamily', f: Family | undefined, v: number) => {
@@ -145,7 +143,6 @@ export function traitEffects(list: HeroTrait[], ctx: { front: boolean; floor: nu
       case 'tough': e.stat.def += p; break;
       case 'keen': e.crit += p / 2; break;
       case 'fastRecovery': e.injury -= p * 2.5; break;
-      case 'vanguard': if (ctx.front) e.stat.def += p * 1.5; break;
       case 'coward': add('cowerChance', p); break;
       case 'frail': e.stat.hp -= p; break;
       case 'slow': e.stat.spd -= p; break;
@@ -153,7 +150,6 @@ export function traitEffects(list: HeroTrait[], ctx: { front: boolean; floor: nu
       case 'selfish': add('healGive', -p * 2); break;
       case 'whiner': e.injury += p * 5; break;
       case 'acrophobia': if (ctx.floor >= 5) { e.stat.atk -= p; e.stat.def -= p; } break;
-      case 'skulker': if (ctx.front) { e.stat.atk -= p * 1.5; e.stat.def -= p * 1.5; } break;
       case 'obese': e.stat.hp += p; e.stat.spd -= p; break;
       case 'berserker': add('berserkAtkPerDown', p); add('berserkDefPerDown', p); break;
       case 'ironSkin': add('dmgTaken', -p); e.stat.spd -= p; break;

@@ -1,7 +1,12 @@
 // 영웅 외형 생성기 (32×32, 부위 레이어 조합) — GDD 13
 //
+// 외형은 "성별 → 종족 → 직업" 순으로 정해집니다.
+//   - 성별: 체형 폭, 머리 모양 후보, 수염, 속눈썹·입술
+//   - 종족: 의상 스타일·체형·머리 장비 후보·색 후보 (바바리안은 털가죽, 드워프는 쇠와 가죽, 엘프는 숲색 옷 …)
+//   - 직업: 무기와 작은 장신구 (인간만 직업별 정통 복장)
+//
 // 그리는 순서 = 레이어 순서:
-//   등 뒤 소품 → 다리 → 몸(직업 의상) → 팔·손 → 무기·방패 → 머리(종족 피부/털) → 귀
+//   등 뒤 소품 → 다리 → 몸(종족·직업 의상) → 팔·손 → 무기·방패 → 머리(종족 피부/털) → 귀
 //   → 머리카락 → 수염 → 눈·눈썹·코·입 → 표식 → 머리 장비 → 수인 귀 → 자동 외곽선
 //
 // 에셋 팩으로 바꿀 때: 각 draw* 함수를 "같은 좌표에 레이어 시트 한 장 그리기"로 바꾸면 됩니다.
@@ -13,7 +18,10 @@ export type Grid = (string | null)[][];
 export const SIZE = 32;
 const OUTLINE = '#1b1626';
 
+export type Gender = 'm' | 'f';
+
 export interface Look {
+  gender: Gender;
   skin: number;
   hair: number;
   hairStyle: string;
@@ -55,6 +63,16 @@ const HAIR_BY_RACE: Record<string, number[]> = {
 };
 const EYE_COLORS = ['#3a6ad0', '#3a9a5a', '#6a4428', '#d09a2a', '#a83a3a', '#8a4ac8', '#2a2a2a'];
 export const CLOTHS = ['#3d6fd1', '#c8402f', '#4f9a52', '#7b4fc9', '#8a5a3a', '#d08a2a', '#2a8a8a', '#c84a8a', '#4a4a5a', '#d8cfb8'];
+/** 종족별로 고를 수 있는 옷 색 (CLOTHS 인덱스) */
+const CLOTH_BY_RACE: Record<string, number[]> = {
+  human: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+  elf: [2, 6, 9, 3, 0],
+  dwarf: [4, 1, 8, 0, 5],
+  barbarian: [4, 1, 8, 5],
+  beastfolk: [5, 2, 0, 7, 4, 9],
+};
+/** 바바리안 털가죽 색 */
+const FURS = ['#8a5a3a', '#6a5a4a', '#b8905a', '#4a3a30', '#d8c8b0'];
 
 const METAL = '#b8c2d4';
 const METAL_D = '#7d88a3';
@@ -65,64 +83,117 @@ const GOLD_D = '#b08a2e';
 
 // ─────────────── 선택지 ───────────────
 
-const HAIR_STYLES = ['short', 'spiky', 'long', 'bob', 'ponytail', 'bun', 'mohawk', 'bangs', 'braids', 'curly', 'bald'];
+const HAIR_M = ['short', 'spiky', 'curly', 'bangs', 'bald', 'short', 'spiky'];
+const HAIR_F = ['long', 'ponytail', 'bun', 'bob', 'braids', 'bangs', 'curly', 'twintail', 'long'];
 const EYES = ['dot', 'big', 'narrow', 'happy', 'sleepy', 'glint'];
-const BROWS = ['none', 'flat', 'angry', 'worried', 'thick'];
+const BROWS_M = ['none', 'flat', 'angry', 'worried', 'thick'];
+const BROWS_F = ['none', 'flat', 'worried', 'angry'];
 const MOUTHS = ['smile', 'flat', 'open', 'frown', 'smirk', 'fang'];
 const MARKS = ['none', 'none', 'scar', 'freckles', 'blush', 'eyepatch', 'mole', 'tattoo'];
 
-const GEAR_BY_CLASS: Record<ClassId, string[]> = {
-  knight: ['none', 'helm', 'helm', 'plumehelm'],
-  warrior: ['none', 'none', 'horns', 'headband'],
-  archer: ['none', 'hood', 'hood', 'feather'],
-  mage: ['none', 'hat', 'hat', 'hat'],
-  priest: ['none', 'circlet', 'halo', 'halo'],
-};
-const WEAPONS: Record<ClassId, string[]> = {
-  knight: ['sword', 'mace'],
-  warrior: ['axe', 'greatsword', 'hammer'],
-  archer: ['bow', 'longbow'],
-  mage: ['staff', 'wand'],
-  priest: ['holystaff', 'book'],
+type Style = 'human' | 'elf' | 'dwarf' | 'barbarian' | 'beast';
+const styleOf = (race: RaceId): Style => (race === 'beastfolk' ? 'beast' : race);
+
+/** 머리 장비 후보: 종족 × 직업 (인간만 직업 정통 장비) */
+const GEAR: Record<Style, Record<ClassId, string[]>> = {
+  human: {
+    knight: ['none', 'helm', 'helm', 'plumehelm'],
+    warrior: ['none', 'none', 'headband'],
+    archer: ['none', 'hood', 'hood', 'feather'],
+    mage: ['none', 'hat', 'hat', 'hat'],
+    priest: ['none', 'circlet', 'halo', 'halo'],
+  },
+  elf: {
+    knight: ['elfhelm', 'elfhelm', 'circlet'],
+    warrior: ['none', 'circlet', 'leafcrown'],
+    archer: ['hood', 'leafcrown', 'none'],
+    mage: ['circlet', 'leafcrown', 'none'],
+    priest: ['circlet', 'halo', 'leafcrown'],
+  },
+  dwarf: {
+    knight: ['dwarfhelm', 'hornhelm'],
+    warrior: ['hornhelm', 'dwarfhelm', 'none'],
+    archer: ['cap', 'goggles', 'none'],
+    mage: ['goggles', 'runeband', 'none'],
+    priest: ['dwarfhelm', 'runeband', 'none'],
+  },
+  barbarian: {
+    knight: ['horns', 'horns', 'none'],
+    warrior: ['horns', 'bone', 'headband', 'none'],
+    archer: ['bone', 'headband', 'none'],
+    mage: ['skull', 'skull', 'bone'],
+    priest: ['skull', 'bone', 'bone'],
+  },
+  beast: {
+    knight: ['none', 'bandana'],
+    warrior: ['bandana', 'headband', 'none'],
+    archer: ['hood', 'bandana', 'none'],
+    mage: ['none', 'circlet'],
+    priest: ['halo', 'circlet', 'none'],
+  },
 };
 
-export function randomLook(rand: () => number, race: RaceId, beast: BeastKind | undefined, cls: ClassId): Look {
+const WEAPONS: Record<Style, Record<ClassId, string[]>> = {
+  human: { knight: ['sword', 'mace'], warrior: ['axe', 'greatsword', 'hammer'], archer: ['bow', 'longbow'], mage: ['staff', 'wand'], priest: ['holystaff', 'book'] },
+  elf: { knight: ['sword'], warrior: ['greatsword', 'sword'], archer: ['longbow'], mage: ['staff'], priest: ['holystaff'] },
+  dwarf: { knight: ['hammer', 'mace'], warrior: ['axe', 'hammer'], archer: ['crossbow'], mage: ['staff', 'wand'], priest: ['hammer', 'book'] },
+  barbarian: { knight: ['axe', 'mace'], warrior: ['axe', 'greatsword'], archer: ['bow'], mage: ['skullstaff'], priest: ['totem'] },
+  beast: { knight: ['sword', 'mace'], warrior: ['axe', 'hammer'], archer: ['bow'], mage: ['wand', 'staff'], priest: ['holystaff'] },
+};
+
+export function randomLook(rand: () => number, race: RaceId, beast: BeastKind | undefined, cls: ClassId, gender: Gender): Look {
   const pick = <T,>(a: readonly T[]) => a[Math.floor(rand() * a.length)];
   const skinKey = race === 'beastfolk' ? beast! : race;
+  const style = styleOf(race);
+  const f = gender === 'f';
+
+  // 수염: 남성만
   let beard = 'none';
-  if (race === 'dwarf') beard = pick(['long', 'braided', 'wide', 'long']);
-  else if (race === 'barbarian') beard = pick(['none', 'stubble', 'short', 'long', 'mustache']);
-  else if (race === 'human') beard = pick(['none', 'none', 'none', 'stubble', 'mustache', 'short']);
+  if (!f) {
+    if (race === 'dwarf') beard = pick(['long', 'braided', 'wide', 'long']);
+    else if (race === 'barbarian') beard = pick(['stubble', 'short', 'long', 'mustache', 'none']);
+    else if (race === 'human') beard = pick(['none', 'none', 'none', 'stubble', 'mustache', 'short']);
+  }
+
+  // 머리 모양: 성별 후보에서 종족에 맞게 보정
+  let hairStyle = pick(f ? HAIR_F : HAIR_M);
+  if (race === 'barbarian' && !f && rand() < 0.4) hairStyle = pick(['mohawk', 'long', 'braids']);
+  if (race === 'dwarf' && f) hairStyle = pick(['braids', 'braids', 'bun', 'twintail']);
+  if (race === 'elf') hairStyle = f ? pick(['long', 'long', 'braids', 'ponytail', 'bun']) : pick(['long', 'ponytail', 'short', 'bangs']);
+  if (race === 'beastfolk' && ['mohawk', 'braids', 'bun', 'twintail'].includes(hairStyle)) hairStyle = pick(f ? ['bob', 'long', 'bangs'] : ['short', 'bangs', 'curly']);
 
   let mark = pick(MARKS);
   if (race === 'barbarian' && rand() < 0.6) mark = 'warpaint';
   if (race === 'beastfolk' && beast === 'cat' && rand() < 0.5) mark = 'whiskers';
+  if (f && mark === 'none' && rand() < 0.3) mark = 'blush';
 
-  let hairStyle = pick(HAIR_STYLES);
-  if (race === 'beastfolk' && ['mohawk', 'braids', 'bun'].includes(hairStyle)) hairStyle = pick(['short', 'bangs', 'curly', 'bald']);
-  if (race === 'elf' && hairStyle === 'bald') hairStyle = 'long';
+  let gear = pick(GEAR[style][cls]);
+  if (style === 'beast' && f && rand() < 0.3) gear = 'flower';
+  if (style === 'elf' && f && gear === 'none' && rand() < 0.4) gear = 'flower';
 
+  const cloths = CLOTH_BY_RACE[race];
   return {
+    gender,
     skin: Math.floor(rand() * SKINS[skinKey].length),
     hair: pick(HAIR_BY_RACE[race]),
     hairStyle,
     eyes: pick(EYES),
     eyeColor: Math.floor(rand() * EYE_COLORS.length),
-    brows: pick(BROWS),
+    brows: pick(f ? BROWS_F : BROWS_M),
     mouth: pick(MOUTHS),
     beard,
     mark,
-    gear: pick(GEAR_BY_CLASS[cls]),
-    weapon: pick(WEAPONS[cls]),
-    cloth: Math.floor(rand() * CLOTHS.length),
-    cloth2: Math.floor(rand() * CLOTHS.length),
+    gear,
+    weapon: pick(WEAPONS[style][cls]),
+    cloth: pick(cloths),
+    cloth2: style === 'barbarian' ? Math.floor(rand() * FURS.length) : pick(cloths),
     earVar: Math.floor(rand() * 3),
   };
 }
 
 /** 외형이 같은지 비교하는 키 (중복 영웅 방지) */
 export function lookSignature(race: RaceId, beast: BeastKind | undefined, cls: ClassId, l: Look): string {
-  return [race, beast ?? '', cls, l.skin, l.hair, l.hairStyle, l.eyes, l.eyeColor, l.brows, l.mouth, l.beard, l.mark, l.gear, l.cloth].join('|');
+  return [race, beast ?? '', cls, l.gender, l.skin, l.hair, l.hairStyle, l.eyes, l.eyeColor, l.brows, l.mouth, l.beard, l.mark, l.gear, l.cloth].join('|');
 }
 
 // ─────────────── 그리기 도구 ───────────────
@@ -166,15 +237,20 @@ interface Layout {
   ly1: number;
 }
 
-function layout(race: RaceId, beast?: BeastKind): Layout {
-  if (race === 'dwarf') return { hx0: 10, hx1: 21, hy0: 9, hy1: 19, bx0: 10, bx1: 21, by0: 20, by1: 25, ly1: 29 };
+function layout(race: RaceId, beast: BeastKind | undefined, gender: Gender): Layout {
+  // 여성은 어깨가 1픽셀씩 좁음
+  const n = gender === 'f' ? 1 : 0;
+  if (race === 'dwarf') return { hx0: 10, hx1: 21, hy0: 9, hy1: 19, bx0: 10 + n, bx1: 21 - n, by0: 20, by1: 25, ly1: 29 };
   const wide = race === 'barbarian' || beast === 'bear';
-  return { hx0: 10, hx1: 21, hy0: 6, hy1: 16, bx0: wide ? 10 : 11, bx1: wide ? 21 : 20, by0: 17, by1: 24, ly1: 29 };
+  const slim = race === 'elf';
+  const x0 = wide ? 10 : slim ? 12 : 11;
+  return { hx0: 10, hx1: 21, hy0: 6, hy1: 16, bx0: x0 + n, bx1: 31 - x0 - n, by0: 17, by1: 24, ly1: 29 };
 }
 
 // ─────────────── 본체 ───────────────
 
 export interface HeroLike {
+  gender?: Gender;
   race: RaceId;
   beast?: BeastKind;
   classId: ClassId;
@@ -183,8 +259,10 @@ export interface HeroLike {
 
 export function heroGrid(h: HeroLike): Grid {
   const c = new Canvas();
-  const L = layout(h.race, h.beast);
   const l = h.look;
+  const gender: Gender = l.gender ?? h.gender ?? 'm';
+  const L = layout(h.race, h.beast, gender);
+  const style = styleOf(h.race);
   const skinKey = h.race === 'beastfolk' ? h.beast! : h.race;
   const skins = SKINS[skinKey];
   const S = skins[l.skin % skins.length];
@@ -193,17 +271,18 @@ export function heroGrid(h: HeroLike): Grid {
   const hairD = shade(hair, 0.72);
   const C1 = CLOTHS[l.cloth % CLOTHS.length];
   const C1d = shade(C1, 0.7);
-  const C2 = CLOTHS[(l.cloth2 === l.cloth ? l.cloth2 + 3 : l.cloth2) % CLOTHS.length];
+  const C2 = style === 'barbarian' ? FURS[l.cloth2 % FURS.length] : CLOTHS[(l.cloth2 === l.cloth ? l.cloth2 + 3 : l.cloth2) % CLOTHS.length];
   const beast = h.race === 'beastfolk';
+  const p: Paint = { S, Sd, C1, C1d, C2, gender };
 
-  drawBack(c, h.classId, L);
-  drawLegs(c, h.classId, L, C1, C1d);
-  drawBody(c, h.classId, L, S, C1, C1d, C2);
-  drawWeapon(c, h.classId, l.weapon, L, C1, C2, l.eyeColor);
+  drawBack(c, style, h.classId, L, p);
+  drawLegs(c, style, h.classId, L, p);
+  drawBody(c, style, h.classId, L, p);
+  drawWeapon(c, style, h.classId, l.weapon, L, C1, C2, l.eyeColor);
   drawHead(c, L, S, Sd);
   if (!beast) drawEars(c, h.race, L, S, Sd);
   if (beast && h.beast === 'dog') drawBeastEars(c, 'dog', L, S, l.earVar);
-  if (!['helm', 'plumehelm', 'hood', 'hat'].includes(l.gear) || beast) drawHair(c, l.hairStyle, L, hair, hairD, l.gear);
+  if (!COVERING.includes(l.gear) || beast) drawHair(c, l.hairStyle, L, hair, hairD, l.gear);
   drawBeard(c, l.beard, L, hair, hairD, Sd);
   drawFace(c, h.race, h.beast, l, L, S, Sd, hair);
   drawMark(c, l.mark, L, S, C2);
@@ -213,98 +292,226 @@ export function heroGrid(h: HeroLike): Grid {
   return c.g;
 }
 
-function drawBack(c: Canvas, cls: ClassId, L: Layout): void {
-  if (cls === 'archer') {
+/** 머리카락을 덮는 머리 장비 */
+const COVERING = ['helm', 'plumehelm', 'hood', 'hat', 'dwarfhelm', 'hornhelm', 'cap', 'bandana', 'skull'];
+
+interface Paint {
+  S: string;
+  Sd: string;
+  C1: string;
+  C1d: string;
+  /** 보조색 (바바리안은 털가죽 색) */
+  C2: string;
+  gender: Gender;
+}
+
+const LEATHER = '#4a3424';
+const BONE = '#ece6d6';
+
+function drawBack(c: Canvas, style: Style, cls: ClassId, L: Layout, p: Paint): void {
+  if (cls === 'archer' && style !== 'dwarf') {
     // 화살통
     c.rect(L.bx1 - 1, L.by0 - 4, 3, 8, WOOD_D);
     c.px(L.bx1 - 1, L.by0 - 5, '#f2ece0');
     c.px(L.bx1 + 1, L.by0 - 5, '#f2ece0');
   }
-  if (cls === 'knight') {
-    // 망토 자락
-    c.rect(L.bx0 - 1, L.by0 + 1, L.bx1 - L.bx0 + 3, L.by1 - L.by0 + 3, '#3a2f4a');
+  if (style === 'human' && cls === 'knight') {
+    c.rect(L.bx0 - 1, L.by0 + 1, L.bx1 - L.bx0 + 3, L.by1 - L.by0 + 3, '#3a2f4a'); // 망토
+  }
+  if (style === 'elf' && (cls === 'knight' || cls === 'archer' || cls === 'warrior')) {
+    c.rect(L.bx0 - 1, L.by0 + 1, L.bx1 - L.bx0 + 3, L.by1 - L.by0 + 4, shade(p.C1, 0.6)); // 긴 망토
+  }
+  if (style === 'barbarian' && (cls === 'mage' || cls === 'priest')) {
+    c.rect(L.bx0 - 2, L.by0, L.bx1 - L.bx0 + 5, L.by1 - L.by0 + 4, shade(p.C2, 0.75)); // 털 망토
   }
 }
 
-function drawLegs(c: Canvas, cls: ClassId, L: Layout, C1: string, C1d: string): void {
+function drawLegs(c: Canvas, style: Style, cls: ClassId, L: Layout, p: Paint): void {
   const y0 = L.by1 + 1;
-  if (cls === 'mage' || cls === 'priest') {
-    // 로브가 발까지 덮음
-    const robe = cls === 'priest' ? '#e8e4da' : C1;
-    const robeD = cls === 'priest' ? '#c7c2b6' : C1d;
-    c.rect(L.bx0 - 1, y0, L.bx1 - L.bx0 + 3, L.ly1 - y0 + 1, robe);
-    c.rect(L.bx0 - 1, L.ly1, L.bx1 - L.bx0 + 3, 1, robeD);
+  const cx = (L.bx0 + L.bx1) >> 1;
+  const legs = (pants: string, boot: string, bootH = 2) => {
+    c.rect(cx - 3, y0, 3, L.ly1 - y0 + 1, pants);
+    c.rect(cx + 1, y0, 3, L.ly1 - y0 + 1, pants);
+    c.rect(cx - 4, L.ly1 + 2 - bootH, 4, bootH, boot);
+    c.rect(cx + 1, L.ly1 + 2 - bootH, 4, bootH, boot);
+  };
+  const robe = (color: string, dark: string) => {
+    c.rect(L.bx0 - 1, y0, L.bx1 - L.bx0 + 3, L.ly1 - y0 + 1, color);
+    c.rect(L.bx0 - 1, L.ly1, L.bx1 - L.bx0 + 3, 1, dark);
     c.rect(L.bx0 + 1, L.ly1 + 1, 3, 1, '#3a2e2a');
     c.rect(L.bx1 - 3, L.ly1 + 1, 3, 1, '#3a2e2a');
-    return;
+  };
+
+  switch (style) {
+    case 'human':
+      if (cls === 'mage' || cls === 'priest') return robe(cls === 'priest' ? '#e8e4da' : p.C1, cls === 'priest' ? '#c7c2b6' : p.C1d);
+      return legs(cls === 'knight' ? METAL_D : cls === 'archer' ? '#5a5a3a' : p.C1d, cls === 'knight' ? '#5a6278' : LEATHER);
+    case 'elf':
+      if (cls === 'mage' || cls === 'priest') return robe(cls === 'priest' ? '#f2f0ea' : p.C1, p.C1d);
+      legs('#6a7a5a', '#8a6a46', 3);
+      // 튜닉 자락
+      c.rect(L.bx0, y0, L.bx1 - L.bx0 + 1, 2, p.C1);
+      return;
+    case 'dwarf':
+      if (cls === 'mage' || cls === 'priest') {
+        // 무릎까지 오는 짧은 로브 + 큰 장화
+        c.rect(L.bx0 - 1, y0, L.bx1 - L.bx0 + 3, 2, p.C1);
+        legs(LEATHER, '#3a2a1e', 2);
+        return;
+      }
+      return legs(cls === 'knight' ? METAL_D : '#5a4a3a', '#3a2a1e', 2);
+    case 'barbarian': {
+      // 털 치마 + 맨다리 + 털 장화
+      legs(p.S, p.C2, 2);
+      c.rect(L.bx0, y0, L.bx1 - L.bx0 + 1, 2, p.C2);
+      for (let x = L.bx0; x <= L.bx1; x += 2) c.px(x, y0 + 2, p.C2);
+      return;
+    }
+    case 'beast':
+      if (cls === 'mage' || cls === 'priest') return robe(cls === 'priest' ? '#e8e4da' : p.C1, p.C1d);
+      // 반바지 + 맨발(털)
+      c.rect(cx - 3, y0, 3, 2, p.C1d);
+      c.rect(cx + 1, y0, 3, 2, p.C1d);
+      c.rect(cx - 3, y0 + 2, 3, L.ly1 - y0 - 1, p.S);
+      c.rect(cx + 1, y0 + 2, 3, L.ly1 - y0 - 1, p.S);
+      c.rect(cx - 4, L.ly1 + 1, 4, 1, p.Sd);
+      c.rect(cx + 1, L.ly1 + 1, 4, 1, p.Sd);
+      return;
   }
-  const pants = cls === 'knight' ? METAL_D : cls === 'archer' ? '#5a5a3a' : C1d;
-  const cx = (L.bx0 + L.bx1) >> 1;
-  c.rect(cx - 3, y0, 3, L.ly1 - y0 + 1, pants);
-  c.rect(cx + 1, y0, 3, L.ly1 - y0 + 1, pants);
-  const boot = cls === 'knight' ? '#5a6278' : '#4a3424';
-  c.rect(cx - 4, L.ly1, 4, 2, boot);
-  c.rect(cx + 1, L.ly1, 4, 2, boot);
 }
 
-function drawBody(c: Canvas, cls: ClassId, L: Layout, S: string, C1: string, C1d: string, C2: string): void {
+function drawBody(c: Canvas, style: Style, cls: ClassId, L: Layout, p: Paint): void {
   const { bx0, bx1, by0, by1 } = L;
   const w = bx1 - bx0 + 1;
   const h = by1 - by0 + 1;
   const cx = (bx0 + bx1) >> 1;
-  let torso = C1;
+  const { S, C1, C1d, C2 } = p;
   let sleeve = C1;
-  switch (cls) {
-    case 'knight':
-      torso = METAL;
-      sleeve = METAL;
-      c.rect(bx0, by0, w, h, METAL);
-      c.rect(bx0, by1, w, 1, METAL_D);
-      c.rect(cx - 1, by0 + 1, 3, h, C1); // 휘장
-      c.px(cx, by0 + 2, C2);
+  let pauldron: string | null = null;
+
+  switch (style) {
+    case 'human':
+      switch (cls) {
+        case 'knight':
+          sleeve = METAL;
+          pauldron = METAL_D;
+          c.rect(bx0, by0, w, h, METAL);
+          c.rect(bx0, by1, w, 1, METAL_D);
+          c.rect(cx - 1, by0 + 1, 3, h, C1);
+          c.px(cx, by0 + 2, C2);
+          break;
+        case 'warrior':
+          sleeve = S;
+          c.rect(bx0, by0, w, h, C1);
+          c.rect(cx - 1, by0, 3, 3, S);
+          c.px(cx, by0 + 3, S);
+          c.rect(bx0, by1 - 1, w, 2, LEATHER);
+          c.px(cx, by1 - 1, GOLD);
+          break;
+        case 'archer':
+          c.rect(bx0, by0, w, h, C1);
+          c.rect(bx0, by0, w, 1, C1d);
+          c.rect(bx0, by1 - 1, w, 1, LEATHER);
+          c.rect(bx0 + 1, by0 + 1, 1, h - 2, LEATHER);
+          break;
+        case 'mage':
+          c.rect(bx0, by0, w, h, C1);
+          c.rect(cx, by0, 1, h, C2);
+          c.rect(bx0, by1 - 2, w, 1, C2);
+          break;
+        case 'priest':
+          sleeve = '#f2f0ea';
+          c.rect(bx0, by0, w, h, '#f2f0ea');
+          c.rect(cx - 1, by0, 2, h, C1);
+          c.rect(cx - 1, by0 + 2, 2, 1, GOLD);
+          break;
+      }
       break;
-    case 'warrior':
+
+    case 'elf': {
+      // 날씬한 튜닉 + 대각선 띠 (기사는 은빛 경갑)
+      const base = cls === 'knight' ? '#d8e0ea' : cls === 'priest' ? '#f2f0ea' : C1;
+      sleeve = base;
+      c.rect(bx0, by0, w, h, base);
+      for (let i = 0; i < h; i++) c.px(bx0 + Math.min(w - 1, i), by0 + i, cls === 'knight' ? C1 : C2);
+      c.rect(bx0, by1 - 1, w, 1, '#8a6a46');
+      if (cls === 'knight') pauldron = METAL;
+      break;
+    }
+
+    case 'dwarf': {
+      // 두꺼운 가죽·쇠, 넓은 허리띠와 금 버클
+      const base = cls === 'knight' ? METAL_D : cls === 'priest' ? '#d8cfb8' : C1;
+      sleeve = cls === 'mage' || cls === 'priest' ? base : LEATHER;
+      c.rect(bx0, by0, w, h, base);
+      c.rect(bx0, by1 - 2, w, 2, LEATHER);
+      c.rect(cx - 1, by1 - 2, 2, 2, GOLD);
+      if (cls === 'mage') c.rect(cx - 1, by0 + 1, 2, 1, '#5ad0f0'); // 룬
+      if (cls === 'priest') c.rect(cx - 1, by0 + 1, 2, 2, C1);
+      if (cls === 'knight' || cls === 'warrior') pauldron = METAL;
+      break;
+    }
+
+    case 'barbarian': {
+      // 성별 무관 털가죽 조끼, 남성은 가슴이 드러남. 맨팔에 털 팔찌
       sleeve = S;
-      c.rect(bx0, by0, w, h, C1);
-      c.rect(cx - 1, by0, 3, 3, S); // 가슴 V
-      c.px(cx, by0 + 3, S);
-      c.rect(bx0, by1 - 1, w, 2, '#4a3424'); // 허리띠
-      c.px(cx, by1 - 1, GOLD);
+      if (p.gender === 'm') {
+        c.rect(bx0, by0, w, h, S);
+        c.rect(bx0, by0, 2, h, C2);
+        c.rect(bx1 - 1, by0, 2, h, C2);
+        c.px(cx - 1, by0 + 3, p.Sd);
+        c.px(cx + 1, by0 + 3, p.Sd);
+      } else {
+        c.rect(bx0, by0, w, h, C2);
+        c.rect(cx - 1, by0, 2, 2, S);
+      }
+      c.rect(bx0, by1 - 1, w, 2, LEATHER);
+      c.px(cx, by1 - 1, BONE);
+      if (cls === 'mage' || cls === 'priest') {
+        // 뼈 목걸이
+        for (let x = bx0 + 1; x < bx1; x += 2) c.px(x, by0 + 1, BONE);
+      }
+      if (cls === 'knight') {
+        c.rect(cx - 1, by0 + 1, 3, 4, METAL); // 가슴 보호대
+      }
+      pauldron = C2;
       break;
-    case 'archer':
-      c.rect(bx0, by0, w, h, C1);
-      c.rect(bx0, by0, w, 1, C1d);
-      c.rect(bx0, by1 - 1, w, 1, '#4a3424');
-      c.rect(bx0 + 1, by0 + 1, 1, h - 2, '#4a3424'); // 화살통 끈
+    }
+
+    case 'beast': {
+      // 셔츠 위에 조끼, 팔은 털
+      sleeve = S;
+      c.rect(bx0, by0, w, h, '#e8e0d0');
+      c.rect(bx0, by0, 3, h, C1);
+      c.rect(bx1 - 2, by0, 3, h, C1);
+      c.rect(bx0, by1 - 1, w, 1, LEATHER);
+      if (cls === 'knight') c.rect(bx0 + 2, by0 + 1, w - 4, 4, METAL);
+      if (cls === 'mage' || cls === 'priest') {
+        c.rect(bx0 - 1, by0, w + 2, 2, cls === 'priest' ? '#f2f0ea' : C1); // 짧은 망토
+        c.px(cx, by0 + 3, cls === 'priest' ? GOLD : '#5ad0f0'); // 부적
+      }
       break;
-    case 'mage':
-      c.rect(bx0, by0, w, h, C1);
-      c.rect(cx, by0, 1, h, C2);
-      c.rect(bx0, by1 - 2, w, 1, C2);
-      break;
-    case 'priest':
-      torso = '#f2f0ea';
-      sleeve = '#f2f0ea';
-      c.rect(bx0, by0, w, h, '#f2f0ea');
-      c.rect(cx - 1, by0, 2, h, C1);
-      c.rect(cx - 1, by0 + 2, 2, 1, GOLD);
-      break;
+    }
   }
-  void torso;
+
   // 팔 + 손
   const armTop = by0;
   const armBot = by1 - 1;
   c.rect(bx0 - 2, armTop, 2, armBot - armTop + 1, sleeve);
   c.rect(bx1 + 1, armTop, 2, armBot - armTop + 1, sleeve);
-  if (cls === 'knight') {
-    c.rect(bx0 - 2, armTop, 2, 2, METAL_D);
-    c.rect(bx1 + 1, armTop, 2, 2, METAL_D);
+  if (pauldron) {
+    c.rect(bx0 - 2, armTop, 2, 2, pauldron);
+    c.rect(bx1 + 1, armTop, 2, 2, pauldron);
+  }
+  if (style === 'barbarian') {
+    c.rect(bx0 - 2, armBot - 1, 2, 1, C2);
+    c.rect(bx1 + 1, armBot - 1, 2, 1, C2);
   }
   c.rect(bx0 - 2, armBot + 1, 2, 1, S);
   c.rect(bx1 + 1, armBot + 1, 2, 1, S);
 }
 
-function drawWeapon(c: Canvas, cls: ClassId, weapon: string, L: Layout, C1: string, C2: string, eyeColor: number): void {
+function drawWeapon(c: Canvas, style: Style, cls: ClassId, weapon: string, L: Layout, C1: string, C2: string, eyeColor: number): void {
   const hx = L.bx1 + 3; // 오른손 옆
   const hy = L.by1;
   switch (weapon) {
@@ -367,13 +574,45 @@ function drawWeapon(c: Canvas, cls: ClassId, weapon: string, L: Layout, C1: stri
       c.rect(hx - 1, L.hy0 + 1, 3, 3, GOLD);
       c.px(hx, L.hy0 + 2, '#fff6d0');
       break;
+    case 'crossbow':
+      c.rect(hx - 2, hy - 2, 6, 1, WOOD);
+      c.px(hx - 3, hy - 3, WOOD);
+      c.px(hx + 4, hy - 3, WOOD);
+      c.rect(hx, hy - 3, 2, 4, WOOD_D);
+      c.px(hx + 1, hy - 4, METAL);
+      break;
+    case 'skullstaff':
+      c.rect(hx, L.hy0 + 5, 1, L.ly1 - L.hy0 - 4, WOOD_D);
+      c.rect(hx - 1, L.hy0 + 2, 3, 3, BONE);
+      c.px(hx - 1, L.hy0 + 3, '#241a22');
+      c.px(hx + 1, L.hy0 + 3, '#241a22');
+      c.px(hx - 2, L.hy0 + 1, BONE);
+      c.px(hx + 2, L.hy0 + 1, BONE);
+      c.px(hx, L.hy0 + 1, '#7affd0');
+      break;
+    case 'totem':
+      c.rect(hx, L.hy0 + 4, 1, L.ly1 - L.hy0 - 3, WOOD);
+      c.rect(hx - 1, L.hy0 + 1, 3, 3, C2);
+      c.px(hx - 2, L.hy0 + 2, '#c8402f');
+      c.px(hx + 2, L.hy0 + 2, '#3d6fd1');
+      c.px(hx, L.hy0, '#f2ece0');
+      break;
     case 'book':
       c.rect(L.bx0 - 5, L.by1 - 3, 4, 4, C1);
       c.rect(L.bx0 - 5, L.by1 - 3, 4, 1, GOLD);
       c.px(L.bx0 - 3, L.by1 - 1, GOLD);
       break;
   }
-  if (cls === 'knight') {
+  if (cls === 'knight' && style === 'barbarian') {
+    // 둥근 나무 방패
+    const x = L.bx0 - 7;
+    const y = L.by0;
+    c.rect(x + 1, y, 4, 7, WOOD);
+    c.rect(x, y + 1, 6, 5, WOOD);
+    c.rect(x + 2, y + 2, 2, 3, METAL_D);
+    c.px(x + 1, y + 1, WOOD_D);
+    c.px(x + 4, y + 5, WOOD_D);
+  } else if (cls === 'knight') {
     // 방패 (왼쪽)
     const x = L.bx0 - 6;
     const y = L.by0;
@@ -479,8 +718,8 @@ function drawHair(c: Canvas, style: string, L: Layout, H: string, Hd: string, ge
     c.px(hx0 + 3, hy0 - 1, shade(H, 1.35));
     c.px(hx0 + 4, hy0 - 1, shade(H, 1.35));
   };
-  const hasCap = gear === 'circlet' || gear === 'halo' || gear === 'headband' || gear === 'feather' || gear === 'horns' || gear === 'none';
-  if (!hasCap && !['long', 'bob', 'ponytail', 'braids'].includes(style)) return;
+  const covered = COVERING.includes(gear);
+  if (covered && !['long', 'bob', 'ponytail', 'braids', 'twintail'].includes(style)) return;
   cap();
   switch (style) {
     case 'spiky':
@@ -510,6 +749,14 @@ function drawHair(c: Canvas, style: string, L: Layout, H: string, Hd: string, ge
       c.rect(hx1 + 1, hy0 + 1, 2, 9, H);
       c.rect(hx1 + 2, hy0 + 9, 1, 2, Hd);
       c.px(hx1 + 1, hy0 + 2, '#c84a4a');
+      break;
+    case 'twintail':
+      c.rect(hx0 - 3, hy0 + 1, 2, 8, H);
+      c.rect(hx1 + 2, hy0 + 1, 2, 8, H);
+      c.px(hx0 - 2, hy0 + 1, '#e85a7a');
+      c.px(hx1 + 2, hy0 + 1, '#e85a7a');
+      c.rect(hx0 - 3, hy0 + 9, 1, 1, Hd);
+      c.rect(hx1 + 3, hy0 + 9, 1, 1, Hd);
       break;
     case 'bun':
       c.rect(hx0 + 4, hy0 - 4, 4, 3, H);
@@ -619,6 +866,12 @@ function drawFace(c: Canvas, race: RaceId, beast: BeastKind | undefined, l: Look
     }
   }
 
+  // 여성: 바깥쪽 속눈썹
+  if (l.gender === 'f' && l.eyes !== 'happy') {
+    c.px(lx - 1, ey, D);
+    c.px(rx + 2, ey, D);
+  }
+
   // 눈썹
   const by = ey - 2;
   const browC = race === 'beastfolk' ? shade(S, 0.6) : shade(H, 0.85);
@@ -653,16 +906,17 @@ function drawFace(c: Canvas, race: RaceId, beast: BeastKind | undefined, l: Look
     c.px(cx - 1, ey + 2, Sd);
   }
 
-  // 입
+  // 입 (여성은 입술색)
   const my = hy0 + 9;
-  switch (l.mouth) {
+  const lip = l.gender === 'f' && race !== 'beastfolk' ? '#b8485a' : D;
+  switch (l.gender === 'f' && l.mouth === 'fang' ? 'smile' : l.mouth) {
     case 'smile':
-      c.px(cx - 2, my - 1, D);
-      c.rect(cx - 1, my, 2, 1, D);
-      c.px(cx + 1, my - 1, D);
+      c.px(cx - 2, my - 1, lip);
+      c.rect(cx - 1, my, 2, 1, lip);
+      c.px(cx + 1, my - 1, lip);
       break;
     case 'flat':
-      c.rect(cx - 1, my, 2, 1, D);
+      c.rect(cx - 1, my, 2, 1, lip);
       break;
     case 'open':
       c.rect(cx - 1, my - 1, 2, 1, D);
@@ -674,8 +928,8 @@ function drawFace(c: Canvas, race: RaceId, beast: BeastKind | undefined, l: Look
       c.px(cx + 1, my, D);
       break;
     case 'smirk':
-      c.rect(cx - 1, my, 2, 1, D);
-      c.px(cx + 1, my - 1, D);
+      c.rect(cx - 1, my, 2, 1, lip);
+      c.px(cx + 1, my - 1, lip);
       break;
     case 'fang':
       c.rect(cx - 2, my, 4, 1, D);
@@ -795,6 +1049,95 @@ function drawGear(c: Canvas, gear: string, L: Layout, C1: string, C1d: string, C
     case 'circlet':
       c.rect(hx0, hy0 + 2, w, 1, GOLD);
       c.px(cx, hy0 + 2, '#5ad0f0');
+      break;
+    case 'elfhelm':
+      // 은빛 띠 + 양옆 날개
+      c.rect(hx0, hy0 + 1, w, 2, '#e0e8f2');
+      c.px(cx, hy0 + 1, '#5ad0a0');
+      for (const [x, d] of [[hx0 - 1, -1], [hx1 + 1, 1]] as const) {
+        c.px(x, hy0 + 1, '#e0e8f2');
+        c.px(x + d, hy0, '#e0e8f2');
+        c.px(x + d * 2, hy0 - 1, '#e0e8f2');
+        c.px(x + d, hy0 - 1, '#e0e8f2');
+      }
+      break;
+    case 'leafcrown':
+      for (let x = hx0; x <= hx1; x += 2) {
+        c.px(x, hy0 - 1, '#5ab05a');
+        c.px(x + 1, hy0 - 2, '#7ad07a');
+      }
+      c.rect(hx0, hy0, w, 1, '#3a7a3a');
+      break;
+    case 'dwarfhelm':
+      // 둥근 쇠 투구 + 코 가리개
+      c.rect(hx0 - 1, hy0 - 1, w + 2, 4, METAL_D);
+      c.rect(hx0, hy0 - 2, w, 1, METAL);
+      c.rect(hx0 - 1, hy0 + 2, w + 2, 1, METAL);
+      c.rect(cx - 1, hy0 + 3, 1, 3, METAL);
+      c.px(hx0 + 2, hy0 - 1, '#eef2fa');
+      break;
+    case 'hornhelm':
+      c.rect(hx0 - 1, hy0 - 1, w + 2, 4, METAL_D);
+      c.rect(hx0 - 1, hy0 + 2, w + 2, 1, METAL);
+      for (const [x, d] of [[hx0 - 2, -1], [hx1 + 2, 1]] as const) {
+        c.px(x, hy0, BONE);
+        c.px(x, hy0 - 1, BONE);
+        c.px(x + d, hy0 - 2, BONE);
+        c.px(x + d, hy0 - 3, BONE);
+      }
+      break;
+    case 'cap':
+      c.rect(hx0, hy0 - 1, w, 3, '#7a5636');
+      c.rect(hx0 - 1, hy0 + 1, w + 3, 1, '#5c4428');
+      c.px(cx, hy0 - 1, '#c8402f');
+      break;
+    case 'goggles':
+      c.rect(hx0, hy0 + 1, w, 1, LEATHER);
+      c.rect(hx0 + 2, hy0, 3, 3, '#7a5636');
+      c.rect(hx1 - 4, hy0, 3, 3, '#7a5636');
+      c.px(hx0 + 3, hy0 + 1, '#8ad0f0');
+      c.px(hx1 - 3, hy0 + 1, '#8ad0f0');
+      break;
+    case 'runeband':
+      c.rect(hx0, hy0 + 2, w, 1, '#3a2e4a');
+      c.px(cx - 1, hy0 + 2, '#5ad0f0');
+      c.px(cx, hy0 + 2, '#5ad0f0');
+      break;
+    case 'bone':
+      // 가죽 띠 + 뼈 장식 + 깃털
+      c.rect(hx0, hy0 + 2, w, 1, LEATHER);
+      c.px(hx0 + 2, hy0 + 2, BONE);
+      c.px(hx1 - 2, hy0 + 2, BONE);
+      c.rect(hx1 - 1, hy0 - 3, 1, 4, '#c8402f');
+      c.px(hx1, hy0 - 4, '#c8402f');
+      c.rect(hx1 - 3, hy0 - 2, 1, 3, BONE);
+      break;
+    case 'skull':
+      // 짐승 두개골 머리장식 + 뿔
+      c.rect(hx0 + 1, hy0 - 2, w - 2, 4, BONE);
+      c.px(cx - 2, hy0, '#241a22');
+      c.px(cx + 1, hy0, '#241a22');
+      c.rect(hx0 - 1, hy0, 2, 4, C2);
+      c.rect(hx1, hy0, 2, 4, C2);
+      for (const [x, d] of [[hx0, -1], [hx1, 1]] as const) {
+        c.px(x, hy0 - 3, BONE);
+        c.px(x + d, hy0 - 4, BONE);
+        c.px(x + d * 2, hy0 - 5, BONE);
+        c.px(x + d * 2, hy0 - 3, BONE);
+      }
+      break;
+    case 'bandana':
+      c.rect(hx0, hy0 - 1, w, 3, C1);
+      c.rect(hx0, hy0 + 1, w, 1, C1d);
+      c.rect(hx1 + 1, hy0 + 1, 2, 2, C1);
+      c.px(hx1 + 3, hy0 + 3, C1);
+      c.px(hx0 + 3, hy0, '#ffffff');
+      c.px(hx0 + 7, hy0, '#ffffff');
+      break;
+    case 'flower':
+      c.rect(hx1 - 2, hy0, 3, 3, '#f08ab0');
+      c.px(hx1 - 1, hy0 + 1, GOLD);
+      c.px(hx1 - 3, hy0 + 2, '#5ab05a');
       break;
     case 'halo':
       c.rect(cx - 3, hy0 - 4, 6, 1, GOLD);

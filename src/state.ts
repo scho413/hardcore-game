@@ -2,9 +2,9 @@ import type { ClassId } from './data/classes';
 import type { FormationId } from './data/formations';
 import { ROSTER_MAX, generateHero, heroLookKey, tickRecovery, type Hero } from './data/heroes';
 
-/** 저장 데이터. v4: 수치 특성·역할·진형·일대기 */
+/** 저장 데이터. v5: 성별·종족 기반 외형 */
 export interface SaveData {
-  v: 4;
+  v: 5;
   /** 살아있는 영웅 + 죽은 영웅 (status로 구분). 죽은 영웅은 추모의 벽에 표시 */
   heroes: Hero[];
   /** 진형 슬롯 5칸의 영웅 id (빈칸 = null) */
@@ -20,10 +20,10 @@ export interface SaveData {
   nextId: number;
 }
 
-const KEY = 'hardcore-game/save/v4';
+const KEY = 'hardcore-game/save/v5';
 
 function fresh(): SaveData {
-  const d: SaveData = { v: 4, heroes: [], formation: [null, null, null, null, null], formationType: 'basic', cleared: 0, known: [], attempts: 0, defeats: 0, nextId: 1 };
+  const d: SaveData = { v: 5, heroes: [], formation: [null, null, null, null, null], formationType: 'basic', cleared: 0, known: [], attempts: 0, defeats: 0, nextId: 1 };
   // 시작 로스터: 직업별 1명씩 + 무작위 3명
   const start: (ClassId | undefined)[] = ['knight', 'warrior', 'priest', 'archer', 'mage', undefined, undefined, undefined];
   for (const c of start) recruit(d, c);
@@ -40,7 +40,7 @@ function load(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw) as SaveData;
-      if (d && d.v === 4 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
+      if (d && d.v === 5 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
     }
   } catch {
     // 저장소를 쓸 수 없는 환경 → 메모리에서만 진행

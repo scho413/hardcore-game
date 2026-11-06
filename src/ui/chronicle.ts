@@ -35,7 +35,7 @@ export function drawChronicle(scene: Phaser.Scene, hero: Hero, page: number, onP
   const face = scene.add.image(x + 99, y + 99, `face-${hero.id}`).setScale(6);
   if (dead) face.setTint(0xc8c0d0);
   scene.add.text(x + 196, y + 28, hero.name, textStyle(44, dead ? C.dim : C.text));
-  scene.add.text(x + 196, y + 86, `${heroRace(hero).name} ${classRole(hero)} · Lv ${hero.level}`, textStyle(18, C.dim));
+  scene.add.text(x + 196, y + 86, `${heroRace(hero).name} ${hero.gender === 'f' ? '여성' : '남성'} · ${classRole(hero)} · Lv ${hero.level}`, textStyle(18, C.dim));
   const status = dead ? `${hero.diedFloor}층에서 전사${hero.diedBy ? ` (${hero.diedBy})` : ''}` : hero.status === 'injured' ? '중상' : '생존';
   scene.add.text(x + 196, y + 116, status, textStyle(18, dead ? C.redStr : C.greenStr, { wordWrap: { width: w - 220 } }));
   const r = hero.record;

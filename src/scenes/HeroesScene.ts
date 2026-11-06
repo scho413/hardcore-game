@@ -113,7 +113,7 @@ export class HeroesScene extends Page {
 
     const tx = x + 248;
     this.add.text(tx, y + 28, h.name, textStyle(44));
-    this.add.text(tx, y + 90, `${classRole(h)} · Lv ${h.level}`, textStyle(22, C.dim));
+    this.add.text(tx, y + 90, `${h.gender === 'f' ? '여성' : '남성'} · ${classRole(h)} · Lv ${h.level}`, textStyle(22, C.dim));
     raceChip(this, tx, y + 136, h, 18);
     this.add.text(tx, y + 160, `경험치 ${h.xp} / ${xpToNext(h.level)}`, textStyle(18, C.faint));
     xpBar(this, tx, y + 186, w - 248 - 24, h);
