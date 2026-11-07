@@ -10,6 +10,7 @@ import { FormationPanel } from '../ui/formationUi';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, chip, panel } from '../ui/widgets';
+import { unitScale } from '../art/hd';
 import { FAMILIES } from '../data/races';
 
 const LADDER_ROW = 40;
@@ -155,7 +156,7 @@ export class TowerScene extends Page {
       let ey = y + 92;
       for (const [id, n] of counts) {
         const m = MONSTERS[id as keyof typeof MONSTERS];
-        this.add.image(x + 40, ey + 24, `unit-${id}`).setScale(m.boss ? 3.4 : 2.8);
+        this.add.image(x + 40, ey + 24, `unit-${id}`).setScale(unitScale(this, id, m.boss ? 3.4 : 2.8));
         const nm = this.add.text(x + 76, ey, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(22, m.boss ? C.redStr : C.text));
         if (partyFavored.has(m.family)) this.add.text(nm.x + nm.width + 8, ey + 4, '천적 있음', textStyle(18, C.greenStr));
         const fc = chip(this, x + 76, ey + 40, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);

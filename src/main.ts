@@ -23,13 +23,15 @@ async function loadFont(): Promise<void> {
 }
 
 loadFont().then(() => {
-  new Phaser.Game({
+  (window as unknown as { __game?: Phaser.Game }).__game = new Phaser.Game({
     type: Phaser.AUTO,
     parent: 'game',
     width: W,
     height: H,
     backgroundColor: C.bg,
     pixelArt: true,
+    // 그린 그림(256px)을 작게 줄일 때 부드럽게. 도트 확대는 그대로 선명
+    render: { mipmapFilter: 'LINEAR_MIPMAP_LINEAR' },
     scale: {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,

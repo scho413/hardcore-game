@@ -15,6 +15,7 @@ import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { CodexScene } from './CodexScene';
 import { drawDialog, guideHero, resolveSpeaker, tutActive, tutDone, tutIs, tutSkip, type Rect } from '../tutorial/overlay';
 import { GUIDE_NAME, STEPS, TIPS, stepIndex } from '../tutorial/steps';
+import { drawCover, towerBg, unitScale } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -465,6 +466,15 @@ export class BattleScene extends Phaser.Scene {
   // ───────────────────────── 화면 구성 ─────────────────────────
 
   private drawBackground(): void {
+    // 탑: 그린 배경 (구간·보스 방). 영웅·이름이 잘 보이게 살짝 어둡게
+    if (!this.dungeon && this.textures.exists(towerBg(this.floor))) {
+      drawCover(this, towerBg(this.floor), 0, TOP + 110, W, BOTTOM - 100 - TOP - 110, 0.35);
+      const shadeG = this.add.graphics();
+      shadeG.fillStyle(0x0b0910, 0.28).fillRect(0, TOP + 110, W, BOTTOM - 100 - TOP - 110);
+      shadeG.fillGradientStyle(0x0b0910, 0x0b0910, 0x0b0910, 0x0b0910, 0, 0, 0.45, 0.45).fillRect(0, 640, W, BOTTOM - 100 - 640);
+      shadeG.fillStyle(0x0b0910, 1).fillRect(0, BOTTOM - 100, W, 100);
+      return;
+    }
     const g = this.add.graphics();
     // 벽
     const wallTop = TOP + 110;
@@ -530,12 +540,14 @@ export class BattleScene extends Phaser.Scene {
       y = ALLY_Y[u.row];
     }
     const isHero = !!u.texture?.startsWith('hero-');
-    const scale = isHero ? 3 : u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
-    const size = (isHero ? 32 : 16) * scale;
+    const key = u.texture ?? `unit-${u.kind}`;
+    const base = isHero ? 3 : u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
+    const scale = isHero ? base : unitScale(this, u.kind, base) * (this.textures.get(key).getSourceImage().width > 64 ? 1.25 : 1);
+    const size = this.textures.get(key).getSourceImage().height * scale;
     const barW = u.boss ? 220 : 116;
 
     const shadow = this.add.ellipse(0, size / 2 - 4, size * 0.7, size * 0.16, 0x000000, 0.35);
-    const sprite = this.add.image(0, 0, u.texture ?? `unit-${u.kind}`).setScale(scale);
+    const sprite = this.add.image(0, 0, key).setScale(scale);
     if (u.rare) sprite.setTint(0xffd25a);
     const nameY = -size / 2 - 18;
     const label = u.side === 'ally' ? `${u.name} Lv${u.level}` : u.name;
