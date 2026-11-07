@@ -1,6 +1,8 @@
 import type { ClassId } from './data/classes';
 import type { FormationId } from './data/formations';
-import { canAfford, gainXp, generateHero, heroLookKey, setRecoveryScale, tickRecovery, type Hero } from './data/heroes';
+import { addLog, canAfford, gainXp, generateHero, heroLookKey, setLegacyTotals, setRecoveryScale, tickRecovery, type Hero } from './data/heroes';
+import { legacyTotals, makeLegacy } from './data/legacy';
+import { canAddTrait, traitName, type HeroTrait } from './data/traits';
 import {
   AD_SPEEDUP_MS,
   BUILD_MS,
@@ -79,6 +81,11 @@ export interface SaveData {
   test: boolean;
   /** 던전 보스에게서 들은 탑 구간 소문 (구간 번호) */
   rumors: number[];
+  /** 유산 '제자': 다음 같은 직업 모집 때 특성 물려줌 */
+  disciples?: { cls: ClassId; trait: HeroTrait; from: string }[];
+  /** 도감: 만난 몬스터, 몬스터별 처치 수 */
+  seen?: string[];
+  monsterKills?: Record<string, number>;
 }
 
 const KEY = 'hardcore-game/save/v8';
@@ -183,6 +190,16 @@ export function recruit(d: SaveData = game.data, classId?: ClassId): Hero | null
   const grade = rollHeroGrade(d.facilities?.recruit ?? 1);
   const h = generateHero(Math.random, `h${d.nextId++}`, ctx, { classId, grade });
   d.heroes.push(h);
+  // 유산 '제자': 같은 직업 선배의 좋은 특성을 50% 확률로 물려받음
+  const di = (d.disciples ?? []).findIndex((x) => x.cls === h.classId);
+  if (di >= 0) {
+    const dis = d.disciples![di];
+    d.disciples!.splice(di, 1);
+    if (Math.random() < 0.5 && canAddTrait(h.traits, dis.trait)) {
+      h.traits.push({ ...dis.trait });
+      addLog(h, `${dis.from}의 제자 → ${traitName(dis.trait)} 물려받음`, 'good');
+    }
+  }
   // 진형 빈칸에 자동 배치
   const empty = d.formation.indexOf(null);
   if (empty >= 0 && h) d.formation[empty] = h.id;
@@ -262,7 +279,7 @@ function finishBuilds(d: SaveData, now: number): boolean {
 /** 맡긴 영웅에게 시간당 경험치. 최대 8시간, 레벨 상한 = 최고 클리어 층 (최소 1) */
 function tickTraining(d: SaveData, now: number): boolean {
   let changed = false;
-  const rate = trainingXpPerHour(d.facilities.training);
+  const rate = trainingXpPerHour(d.facilities.training) * (1 + legacyTotals(d.heroes.map((h) => h.legacy)).training);
   const cap = Math.max(1, d.cleared);
   for (const h of d.heroes) {
     if (h.status !== 'training' || h.trainSince === undefined) continue;
@@ -304,7 +321,11 @@ export function stopTraining(h: Hero, now = Date.now()): void {
  */
 export function refresh(now = Date.now()): void {
   const d = game.data;
-  setRecoveryScale(hospitalSpeed(d.facilities.hospital));
+  // 유산이 생기기 전에 죽은 영웅 (예전 저장): 기록으로 계산
+  for (const h of d.heroes) if (h.status === 'dead' && !h.legacy) h.legacy = makeLegacy(h);
+  const lt = legacyTotals(d.heroes.map((h) => h.legacy));
+  setLegacyTotals(lt);
+  setRecoveryScale(hospitalSpeed(d.facilities.hospital) * (1 + lt.hospital));
   let changed = tickRecovery(d.heroes, now);
   if (finishBuilds(d, now)) changed = true;
   if (tickTraining(d, now)) changed = true;

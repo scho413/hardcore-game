@@ -51,16 +51,37 @@ const K = '#1b1626';
 const GRASS = '#4a7a3a';
 
 function dorm(): Grid {
+  // 2층 목조 숙소: 박공 지붕, 둥근 창, 발코니, 굴뚝 두 개, 꽃 화분
   const c = new Canvas();
-  c.rect(2, 26, 28, 2, GRASS);
-  c.box(4, 13, 24, 14, '#c89a6a');
-  for (let y = 15; y < 26; y += 3) c.rect(5, y, 22, 1, '#a87a4a');
-  c.roof(2, 3, 28, 10, '#c0503a', '#9a3a2a');
-  c.rect(22, 2, 3, 6, K);
-  c.rect(23, 3, 1, 4, '#8a6a5a');
-  c.window(7, 16);
-  c.window(21, 16);
-  c.door(13, 20, 7);
+  c.rect(1, 26, 30, 2, GRASS);
+  // 1층 돌 기단 + 나무 벽
+  c.box(2, 18, 28, 9, '#8a8478');
+  for (let x = 3; x < 29; x += 4) c.rect(x, 21 + (x % 8 === 3 ? 0 : 2), 3, 1, '#6a6458');
+  c.box(4, 10, 24, 9, '#c89a6a');
+  for (let x = 6; x < 27; x += 4) c.rect(x, 11, 1, 7, '#a87a4a');
+  // 지붕 (진한 청록)
+  c.roof(1, 0, 30, 11, '#3a7a8a', '#2a5a6a');
+  // 굴뚝·연기
+  c.box(5, 1, 3, 6, '#8a6a5a');
+  c.box(24, 1, 3, 6, '#8a6a5a');
+  c.px(6, 0, '#c8c0d0');
+  c.px(25, 0, '#a8a0b0');
+  // 박공 둥근 창
+  c.rect(14, 4, 4, 4, K);
+  c.rect(15, 5, 2, 2, '#ffd27a');
+  // 2층 창 + 화분
+  c.window(6, 12);
+  c.window(22, 12);
+  c.rect(6, 16, 4, 1, '#e0503a');
+  c.rect(22, 16, 4, 1, '#e8c25a');
+  // 발코니
+  c.rect(11, 17, 10, 1, K);
+  for (let x = 11; x < 21; x += 2) c.px(x, 16, '#6a4030');
+  // 1층 창과 문
+  c.window(5, 20);
+  c.window(23, 20);
+  c.door(13, 20, 7, '#5a3020');
+  c.px(15, 19, '#e8c25a');
   return c.g;
 }
 

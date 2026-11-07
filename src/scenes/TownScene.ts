@@ -18,8 +18,10 @@ import {
 } from '../data/base';
 import { GRADES, MATERIALS, hasMats, spendMats, type MaterialId } from '../data/items';
 import type { Hero } from '../data/heroes';
+import { CodexScene } from './CodexScene';
 import {
   buildSlots,
+  fallen,
   canAffordBuild,
   game,
   living,
@@ -37,16 +39,16 @@ import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 
-/** 건물 자리 (마을 그림 위 좌표, 가운데 아래 기준) */
-const PLOTS: Record<FacilityId, { x: number; y: number }> = {
-  dorm: { x: 190, y: 0 },
-  recruit: { x: 530, y: 0 },
-  smithy: { x: 190, y: 1 },
-  hospital: { x: 530, y: 1 },
-  training: { x: 190, y: 2 },
-  alchemy: { x: 530, y: 2 },
+/** 건물 자리: 가운데 광장을 둥글게 둘러싼 마을 (각도, 도). 위쪽 두 건물 사이로 탑 가는 길 */
+const PLOTS: Record<FacilityId, number> = {
+  dorm: 240,
+  recruit: 300,
+  smithy: 0,
+  hospital: 60,
+  alchemy: 120,
+  training: 180,
 };
-const SCALE = 5;
+const SCALE = 4.6;
 
 const fmtLong = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -87,9 +89,47 @@ export class TownScene extends Page {
     g.fillTriangle(W / 2 - 44, PAGE_TOP + 14, W / 2 + 44, PAGE_TOP + 14, W / 2, PAGE_TOP - 30);
     for (let i = 0; i < 6; i++) g.fillStyle(0xffd27a, 0.5).fillRect(W / 2 - 4, PAGE_TOP + 30 + i * 30, 8, 10);
     g.fillStyle(0x3a5a34, 1).fillRect(0, top + 120, W, bottom - top - 120);
-    g.fillStyle(0x6a5a3a, 1).fillRect(W / 2 - 30, top + 120, 60, bottom - top - 120);
-    g.fillStyle(0x5a4a30, 1);
-    for (let y = top + 140; y < bottom; y += 40) g.fillRect(W / 2 - 22, y, 44, 6);
+    this.drawHill(top);
+
+    // 둥근 마을: 광장 + 둘레길 + 건물로 가는 길
+    const cx0 = W / 2;
+    const cy0 = (top + 150 + bottom) / 2 + 10;
+    const rx = 232;
+    const ry = Math.min(330, (bottom - top - 260) / 2);
+    const pos = (id: FacilityId) => {
+      const a = (PLOTS[id] * Math.PI) / 180;
+      return { x: cx0 + Math.cos(a) * rx, y: cy0 + Math.sin(a) * ry };
+    };
+    const path = 0x7a6440;
+    g.fillStyle(path, 1).fillRect(cx0 - 26, top + 120, 52, cy0 - top - 120);
+    g.lineStyle(40, path, 1).strokeEllipse(cx0, cy0, rx * 2 - 40, ry * 2 - 60);
+    for (const id of FACILITY_IDS) {
+      const p = pos(id);
+      g.lineStyle(26, path, 1).lineBetween(cx0, cy0, p.x, p.y);
+    }
+    // 광장: 돌바닥 + 모닥불
+    g.fillStyle(0x8a7a5a, 1).fillCircle(cx0, cy0, 74);
+    g.fillStyle(0x9a8a6a, 1).fillCircle(cx0, cy0, 62);
+    g.lineStyle(2, 0x7a6a4a, 1);
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      g.lineBetween(cx0 + Math.cos(a) * 24, cy0 + Math.sin(a) * 24, cx0 + Math.cos(a) * 62, cy0 + Math.sin(a) * 62);
+    }
+    g.strokeCircle(cx0, cy0, 24);
+    g.fillStyle(0x5a4a3a, 1).fillCircle(cx0, cy0, 18);
+    const fire = this.add.graphics();
+    fire.fillStyle(0xff8a3a, 1).fillTriangle(-12, 6, 12, 6, 0, -26);
+    fire.fillStyle(0xffd25a, 1).fillTriangle(-6, 6, 6, 6, 0, -12);
+    fire.setPosition(cx0, cy0);
+    this.tweens.add({ targets: fire, scaleY: 0.82, yoyo: true, repeat: -1, duration: 260 });
+    // 나무 몇 그루 (마을 바깥)
+    const trees: [number, number][] = [[40, cy0 - ry - 10], [W - 40, cy0 - ry - 10], [30, cy0 + 10], [W - 30, cy0 + 10], [60, cy0 + ry + 40], [W - 60, cy0 + ry + 40]];
+    for (const [tx, ty] of trees) {
+      if (ty > bottom - 20) continue;
+      g.fillStyle(0x5a3a2a, 1).fillRect(tx - 4, ty, 8, 18);
+      g.fillStyle(0x2e5a2a, 1).fillCircle(tx, ty - 6, 22);
+      g.fillStyle(0x3e7a3a, 1).fillCircle(tx - 6, ty - 12, 12);
+    }
 
     // ── 머리말 ──
     this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
@@ -98,11 +138,12 @@ export class TownScene extends Page {
     this.add.text(W - 28, PAGE_TOP + 74, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
 
     // ── 건물 ──
-    const rowH = Math.min(300, (bottom - (top + 150)) / 3);
     for (const id of FACILITY_IDS) {
-      const p = PLOTS[id];
+      const p = pos(id);
       const cx = p.x;
-      const by = top + 150 + p.y * rowH + rowH - 70;
+      const by = p.y + 30;
+      // 건물 아래 둥근 마당
+      g.fillStyle(0x4a6a3a, 1).fillEllipse(cx, by - 4, BW * SCALE * 0.95, 46);
       const lv = d.facilities[id];
       const build = d.builds.find((b) => b.id === id);
       const def = FACILITIES[id];
@@ -146,6 +187,41 @@ export class TownScene extends Page {
     if (this.open) {
       const id = this.open;
       this.layer(100, () => this.drawPanel(id));
+    }
+  }
+
+  /** 영웅의 언덕 (GDD 3.8): 유산을 남긴 영웅의 비석·기념비·동상. 기여도 높은 순으로 최대 10개 */
+  private drawHill(top: number): void {
+    const g = this.add.graphics();
+    const hy = top + 120;
+    g.fillStyle(0x2e4a2c, 1).fillEllipse(150, hy + 6, 340, 90).fillEllipse(570, hy + 6, 340, 90);
+    const stones = fallen()
+      .filter((h) => (h.legacy?.tier ?? 0) > 0)
+      .sort((a, b) => b.legacy!.score - a.legacy!.score)
+      .slice(0, 10);
+    const xs = [70, 650, 130, 590, 190, 530, 250, 470, 30, 690];
+    stones.forEach((h, i) => {
+      const x = xs[i];
+      const base = hy - 14 + (i % 2 ? 4 : 0);
+      const tier = h.legacy!.tier;
+      if (tier === 1) {
+        g.fillStyle(0x8a8a9a, 1).fillRoundedRect(x - 7, base - 16, 14, 18, 4);
+        g.fillStyle(0x5a5a6a, 1).fillRect(x - 7, base - 2, 14, 3);
+      } else if (tier === 2) {
+        g.fillStyle(0x6a6a7a, 1).fillRect(x - 10, base - 4, 20, 6);
+        g.fillStyle(0xb8c2d4, 1).fillTriangle(x - 6, base - 4, x + 6, base - 4, x, base - 40);
+      } else {
+        g.fillStyle(0x6a6a7a, 1).fillRect(x - 12, base - 10, 24, 12);
+        g.fillStyle(0xe8c25a, 1).fillRect(x - 5, base - 34, 10, 24).fillCircle(x, base - 40, 6);
+        g.fillStyle(0xe8c25a, 1).fillRect(x + 5, base - 44, 3, 22);
+      }
+    });
+    if (stones.length) {
+      this.add.text(150, hy + 22, `영웅의 언덕 · ${fallen().filter((h) => (h.legacy?.tier ?? 0) > 0).length}`, textStyle(18, C.dim, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5);
+      this.add.zone(W / 2, hy, W, 60).setInteractive({ useHandCursor: true }).on('pointerup', () => {
+        CodexScene.openFallen();
+        this.go('codex');
+      });
     }
   }
 
@@ -213,7 +289,7 @@ export class TownScene extends Page {
           const t = this.add.text(mx + 28, cy + 46, `${MATERIALS[k].name} ${have}/${n}`, textStyle(18, have >= n ? '#8fe0a0' : C.redStr)).setOrigin(0, 0.5);
           mx += t.width + 50;
         }
-      this.add.text(x + w - 24, cy, `시간 ${tutorialFree || d.test ? '즉시' : fmtLong(BUILD_MS[to - 1])}`, textStyle(22, C.dim)).setOrigin(1, 0);
+      this.add.text(x + w - 24, cy, `시간 ${tutorialFree || d.test || BUILD_MS[to - 1] === 0 ? '즉시' : fmtLong(BUILD_MS[to - 1])}`, textStyle(22, C.dim)).setOrigin(1, 0);
       const slotsFull = d.builds.length >= buildSlots(d);
       const can = tutorialFree || (!slotsFull && canAffordBuild(id, d));
       const bb = button(this, x + w / 2 - (slotsFull && !tutorialFree ? 150 : 0), cy + 110, slotsFull && !tutorialFree ? 280 : w - 48, 72, lv === 0 ? '건설' : `Lv ${to}로 업그레이드`, () => {

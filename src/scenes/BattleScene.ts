@@ -12,6 +12,7 @@ import { game, readyFormation, save } from '../state';
 import { fmtTime } from '../ui/heroUi';
 import { FAMILIES, type Family } from '../data/races';
 import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
+import { CodexScene } from './CodexScene';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -684,7 +685,10 @@ export class BattleScene extends Phaser.Scene {
       box.add(button(this, 0, by, 440, 84, game.data.tutorial === 1 ? '기지로' : '귀환', () => this.leave(game.data.tutorial === 1 ? 'base' : 'tower', {}), { size: 33 }));
     } else {
       box.add(button(this, -125, by, 220, 84, '탑으로', () => this.leave('tower', {}), { fill: C.panelHi, textColor: C.text, size: 22 }));
-      box.add(button(this, 125, by, 220, 84, deaths > 0 ? '추모의 벽' : '영웅 목록', () => this.leave(deaths > 0 ? 'codex' : 'heroes', {}), { size: 22 }));
+      box.add(button(this, 125, by, 220, 84, deaths > 0 ? '죽은 영웅' : '영웅 목록', () => {
+        if (deaths > 0) CodexScene.openFallen();
+        this.leave(deaths > 0 ? 'codex' : 'heroes', {});
+      }, { size: 22 }));
     }
     this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 320, ease: 'Back.easeOut' });
   }

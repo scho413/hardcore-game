@@ -6,6 +6,7 @@ import { GRADES, SPECIALS, weaponUsable, type Weapon } from './items';
 import { randomName } from './names';
 import { BEAST_KINDS, FAVORED_BONUS, raceTrait, type BeastKind, type Family, type RaceId } from './races';
 import { gradeTraits, rollBirthTraits, traitEffects, type HeroTrait } from './traits';
+import { emptyTotals, type Legacy, type LegacyTotals } from './legacy';
 
 export type { Gender, Look };
 
@@ -44,7 +45,10 @@ export interface Hero {
   bestFloor: number;
   bestCleared: number;
   /** 누적 기록 */
-  record: { battles: number; wins: number; kills: number; killsBy: Partial<Record<Family, number>> };
+  /** pioneer = 탑에서 처음 돌파한 층에 함께한 수, bosses = 보스 처치 수 (유산 기여도) */
+  record: { battles: number; wins: number; kills: number; killsBy: Partial<Record<Family, number>>; pioneer?: number; bosses?: number };
+  /** 죽을 때 남긴 유산 (GDD 3.8) */
+  legacy?: Legacy;
   log: LogEntry[];
   /** 장착한 무기 (GDD 7.3: 영웅이 죽으면 함께 소실) */
   weapon?: Weapon;
@@ -66,6 +70,11 @@ export interface Hero {
 export const GRADE_STAT: [number, number][] = [[-0.06, 0.06], [-0.02, 0.08], [0.04, 0.12], [0.1, 0.18], [0.16, 0.24], [0.24, 0.32]];
 /** 병원 레벨에 따른 회복 속도 (state.refresh가 설정) */
 let recoveryScale = 1;
+/** 죽은 영웅들의 유산 합계 (state.refresh가 설정) */
+let legacy: LegacyTotals = emptyTotals();
+export function setLegacyTotals(t: LegacyTotals): void {
+  legacy = t;
+}
 export function setRecoveryScale(x: number): void {
   recoveryScale = x;
 }
@@ -258,6 +267,7 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
       0.3,
       1 +
         te.stat[k] +
+        (k !== 'spd' ? legacy.classStat[h.classId] ?? 0 : 0) +
         (k === 'atk' ? role.atk ?? 0 : k === 'def' ? role.def ?? 0 : 0) +
         (k !== 'hp' ? (rowEff[k] ?? 0) + (allEff[k] ?? 0) : 0) +
         wAdd(k) -
@@ -273,6 +283,7 @@ export function heroCombat(h: Hero, ctx: HeroContext = {}): { stats: Stats; fx: 
   };
 
   let fx: CombatFx = { vsFamily: { [race.favored]: FAVORED_BONUS } };
+  fx = addFx(fx, { vsFamily: legacy.vsFamily as Record<string, number> });
   fx = addFx(fx, race.fx);
   fx = addFx(fx, te.fx);
   fx = addFx(fx, rowEff.fx);
@@ -325,7 +336,7 @@ export function xpToNext(level: number): number {
 /** 경험치를 더하고 오른 레벨 수를 돌려줌 (인간은 +20%) */
 export function gainXp(h: Hero, xp: number): number {
   let ups = 0;
-  h.xp += Math.round(xp * (heroRace(h).xp ?? 1));
+  h.xp += Math.round(xp * (heroRace(h).xp ?? 1) * (1 + (legacy.classXp[h.classId] ?? 0)));
   while (h.xp >= xpToNext(h.level)) {
     h.xp -= xpToNext(h.level);
     h.level++;

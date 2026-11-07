@@ -58,8 +58,8 @@ export const FACILITIES: Record<FacilityId, FacilityDef> = {
   alchemy: { id: 'alchemy', name: '연금소', desc: '물약·영약 제조', mat: 'crystal', unlock: 8, effect: (lv) => `물약 ${ALCHEMY_UNLOCK[lv - 1]}종` },
 };
 
-/** 레벨 lv로 올리는 시간 (Lv1 = 처음 짓기). 최고 레벨 24시간 */
-export const BUILD_MS = [1, 5, 15, 30, 60, 120, 240, 480, 840, 1440].map((m) => m * 60 * 1000);
+/** 레벨 lv로 올리는 시간 (Lv1 = 처음 짓기). Lv1·2 즉시, Lv3 30초 → Lv10 24시간 */
+export const BUILD_MS = [0, 0, 0.5, 2, 10, 30, 90, 240, 600, 1440].map((m) => m * 60 * 1000);
 /** 광고 1번에 줄어드는 시간 */
 export const AD_SPEEDUP_MS = 30 * 60 * 1000;
 
