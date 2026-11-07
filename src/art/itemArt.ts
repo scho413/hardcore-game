@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import type { ClassId } from '../data/classes';
 import { GRADES, MATERIALS, WEAPON_TYPES, type MatKind, type MaterialId, type Tier } from '../data/items';
 import { makeGridTexture } from './textures';
-import { hdWeaponIcon } from './hd';
+import { hdMatIcon, hdWeaponIcon } from './hd';
 import type { Grid } from './heroArt';
 
 // 12×12 아이콘. 글자: o 외곽선, m 주색, l 밝은 주색, d 어두운 주색, w 나무, h 손잡이, g 보석(등급색)
@@ -163,6 +163,8 @@ export function weaponIcon(scene: Phaser.Scene, cls: ClassId, tier: Tier, grade:
 
 /** 재료 아이콘 텍스처 키 */
 export function matIcon(scene: Phaser.Scene, id: MaterialId): string {
+  const hd = hdMatIcon(scene, id, 12);
+  if (hd) return hd;
   const key = `micon-${id}`;
   if (scene.textures.exists(key)) return key;
   const kind = id.slice(0, -1) as MatKind;
