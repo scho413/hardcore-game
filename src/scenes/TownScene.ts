@@ -1,3 +1,4 @@
+import { josa } from '../ui/josa';
 import { BH, BW, buildingTexture } from '../art/buildings';
 import { matIcon } from '../art/itemArt';
 import {
@@ -19,6 +20,7 @@ import {
 import { GRADES, MATERIALS, hasMats, spendMats, type MaterialId } from '../data/items';
 import type { Hero } from '../data/heroes';
 import { CodexScene } from './CodexScene';
+import { tutActive, tutDone } from '../tutorial/overlay';
 import {
   buildSlots,
   fallen,
@@ -147,7 +149,7 @@ export class TownScene extends Page {
       const lv = d.facilities[id];
       const build = d.builds.find((b) => b.id === id);
       const def = FACILITIES[id];
-      const unlocked = d.test || d.cleared >= def.unlock || (id === 'recruit' && d.tutorial >= 1);
+      const unlocked = d.test || lv > 0 || d.cleared >= def.unlock;
       const img = this.add.image(cx, by, buildingTexture(this, lv > 0 ? id : 'lot')).setOrigin(0.5, 1).setScale(SCALE);
       if (!unlocked) img.setAlpha(0.35);
       if (build) this.add.image(cx, by, buildingTexture(this, 'scaffold')).setOrigin(0.5, 1).setScale(SCALE).setAlpha(0.9);
@@ -163,7 +165,7 @@ export class TownScene extends Page {
         sub = `탑 ${def.unlock}층 클리어 후`;
         subColor = C.faint;
       } else if (lv === 0) {
-        sub = id === 'recruit' && d.tutorial === 1 ? '무료 건설' : '건설 가능';
+        sub = id === 'recruit' && tutActive() ? '무료 건설' : '건설 가능';
         subColor = C.greenStr;
       } else if (lv < FACILITY_MAX && canAffordBuild(id, d)) {
         sub = '업그레이드 가능';
@@ -175,13 +177,15 @@ export class TownScene extends Page {
         .setInteractive({ useHandCursor: true })
         .on('pointerup', () => {
           if (!unlocked) return;
+          if (id === 'recruit') tutDone('plot');
           this.open = id;
           this.picking = false;
           this.recruited = null;
           this.requestRender();
         });
-      if (d.tutorial === 1 && id === 'recruit') this.hint(cx, by - BH * SCALE - 30, '모집소를 지어 보세요');
-      if (d.tutorial === 2 && id === 'recruit' && !this.open) this.hint(cx, by - BH * SCALE - 30, '영웅을 모집하세요');
+      this.mark(`plot-${id}`, cx - (BW * SCALE) / 2 - 10, by - BH * SCALE - 10, BW * SCALE + 20, BH * SCALE + 80);
+      // 새로 지을 수 있게 된 시설 안내 (처음 한 번)
+      if (unlocked && lv === 0 && !build && id !== 'recruit' && !d.test) this.tip(`unlock-${id}`, `${josa(def.name, '을', '를')} 지을 수 있게 됐어.\n${def.desc}.`);
     }
 
     if (this.open) {
@@ -258,7 +262,7 @@ export class TownScene extends Page {
 
     // 건설·업그레이드
     const build = d.builds.find((b) => b.id === id);
-    const tutorialFree = id === 'recruit' && d.tutorial === 1 && lv === 0;
+    const tutorialFree = id === 'recruit' && lv === 0 && tutActive();
     if (build) {
       const total = build.end - build.start;
       const g = this.add.graphics();
@@ -294,11 +298,12 @@ export class TownScene extends Page {
       const can = tutorialFree || (!slotsFull && canAffordBuild(id, d));
       const bb = button(this, x + w / 2 - (slotsFull && !tutorialFree ? 150 : 0), cy + 110, slotsFull && !tutorialFree ? 280 : w - 48, 72, lv === 0 ? '건설' : `Lv ${to}로 업그레이드`, () => {
         startBuild(id, d, Date.now(), tutorialFree);
-        if (tutorialFree) d.tutorial = 2;
+        tutDone('build');
         save();
         this.requestRender();
       }, { size: 26 });
       bb.setEnabled(can);
+      this.mark('build', bb.x - bb.width / 2, bb.y - bb.height / 2, bb.width, bb.height);
       if (slotsFull && !tutorialFree) {
         const ab = button(this, x + w / 2 + 150, cy + 110, 280, 72, d.bonusSlot ? '임시 자리 있음' : '광고 보고 자리 +1', () => {
           d.bonusSlot = true;
@@ -326,7 +331,11 @@ export class TownScene extends Page {
       else if (id === 'dorm') this.add.text(x + 24, fy + 10, `영웅 ${living().length} / ${rosterCap(d)}명`, textStyle(26));
     }
 
-    button(this, x + w / 2, y + h - 56, 260, 72, '닫기', close, { fill: C.panelHi, textColor: C.text, size: 22 });
+    button(this, x + w / 2, y + h - 56, 260, 72, '닫기', () => {
+      tutDone('close');
+      close();
+    }, { fill: C.panelHi, textColor: C.text, size: 22 });
+    this.mark('close', x + w / 2 - 130, y + h - 92, 260, 72);
   }
 
   private recruitPanel(x: number, y: number, w: number, h: number): void {
@@ -334,6 +343,7 @@ export class TownScene extends Page {
     const left = recruitLeft(d);
     const odds = recruitOdds(d.facilities.recruit);
     this.add.text(x + 24, y, '등급 확률', textStyle(22, C.goldStr));
+    this.mark('odds', x + 16, y - 6, w - 32, 70);
     let ox = x + 24;
     odds.forEach((p, i) => {
       if (p <= 0) return;
@@ -341,7 +351,8 @@ export class TownScene extends Page {
       ox += t.width + 18;
     });
     const full = living().length >= rosterCap(d);
-    const tut = d.tutorial === 2;
+    const tut = tutActive();
+    this.mark('recruitFree', x + 24, y + 74, w / 2 - 36, 72);
     const fb = button(this, x + w / 4 + 6, y + 110, w / 2 - 36, 72, tut ? '무료 모집 (튜토리얼)' : `무료 모집 ${left.free}/${RECRUIT_FREE}`, () => this.doRecruit('free'), { size: 22 });
     fb.setEnabled(!full && (tut || d.test || left.free > 0));
     const ab = button(this, x + (w * 3) / 4 - 6, y + 110, w / 2 - 36, 72, `광고 보고 모집 ${left.ads}/${RECRUIT_ADS}`, () => this.doRecruit('ad'), { size: 18, fill: 0x8fd0ff });
@@ -352,6 +363,7 @@ export class TownScene extends Page {
       const gc = GRADES[hero.grade];
       this.add.text(x + w / 2, y + 200, `${gc.name} 영웅 합류!`, textStyle(33, gc.str)).setOrigin(0.5, 0);
       heroCard(this, x + 40, y + 250, w - 80, 150, hero);
+      this.mark('recruited', x + 40, y + 200, w - 80, 200);
     }
     void h;
   }
@@ -359,6 +371,7 @@ export class TownScene extends Page {
   private doRecruit(kind: 'free' | 'ad'): void {
     const h = recruitDaily(kind);
     if (h) {
+      tutDone('recruit');
       save();
       this.recruited = h;
       this.cameras.main.flash(200, (GRADES[h.grade].color >> 16) & 255, (GRADES[h.grade].color >> 8) & 255, GRADES[h.grade].color & 255);

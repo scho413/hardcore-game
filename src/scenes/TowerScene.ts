@@ -1,6 +1,8 @@
 import { scoutRisk, type Risk } from '../battle/scout';
 import { FLOORS, THEMES, TOP_FLOOR, buildEnemies, summonerFor, themeOf, zoneOf } from '../data/floors';
 import { zoneKnown } from '../progress';
+import { tutDone } from '../tutorial/overlay';
+import { TIPS } from '../tutorial/steps';
 import { FATIGUE_TOWER, canAfford, fatigueLevel, heroRace, heroToUnit, towerXp } from '../data/heroes';
 import { MONSTERS } from '../data/monsters';
 import { game, living, readyFormation, save } from '../state';
@@ -34,6 +36,12 @@ export class TowerScene extends Page {
   }
 
   protected draw(): void {
+    // 상황별 도움말: 새 구간 첫 층, 첫 보스 층
+    const d = game.data;
+    if (this.floor > d.cleared) {
+      if (this.floor > 10 && this.floor % 10 === 1) this.tip(`zone-${zoneOf(this.floor)}`, TIPS.zone);
+      else if (FLOORS[this.floor - 1].title) this.tip('boss', TIPS.boss);
+    }
     this.drawHeader();
     this.drawLadder();
     this.drawScout();
@@ -119,6 +127,7 @@ export class TowerScene extends Page {
     const w = W - x - 24;
     const h = PANEL_H;
     panel(this, x, y, w, h);
+    this.mark('scout', x, y, w, h);
 
     const def = FLOORS[this.floor - 1];
     this.add.text(x + 20, y + 14, `정찰 · ${zoneKnown(game.data, zoneOf(this.floor)) ? themeOf(this.floor) : '??? (알려지지 않은 구간)'}`, textStyle(18, C.dim));
@@ -171,13 +180,13 @@ export class TowerScene extends Page {
     const team = readyFormation(FATIGUE_TOWER);
     const y = PAGE_BOTTOM - TAB_H - 70;
     const label = team.length === 0 ? '출전할 영웅이 없습니다' : `${this.floor}층 도전 · ${team.length}명 · 기력 -${FATIGUE_TOWER}`;
+    this.mark('go', 28, y - 46, W - 56, 92);
     const b = button(this, W / 2, y, W - 56, 92, label, () => {
+      tutDone('go1');
       game.data.attempts++;
       save();
       this.go('battle', { floor: this.floor });
     }, { size: team.length === 0 ? 22 : 33 });
     b.setEnabled(team.length > 0);
-    if (game.data.tutorial === 0) this.hint(W / 2, y - 80, '탑 1층에 도전해 보세요');
-    else if (game.data.tutorial < 3) this.hint(W / 2, y - 80, '기지로 돌아가세요');
   }
 }

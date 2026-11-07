@@ -9,6 +9,7 @@ import { TRAITS, canAddTrait, rollValue, traitName, type HeroTrait } from './dat
 import type { SaveData } from './state';
 import { dungeonGold, towerGold } from './data/base';
 import { TIER_NAME, legacyText, makeLegacy } from './data/legacy';
+import { TUT_DONE } from './tutorial/steps';
 
 export interface HeroReport {
   hero: Hero;
@@ -114,7 +115,7 @@ export function applyBattleResult(
       if (def.title && !u.down && u.lowestHp <= 0.2 && rand() < P_COMEBACK) {
         gain(hero, r, { id: 'comeback', v: rollValue(rand, 'good') }, `${floor}층 보스전에서 빈사로 생존`);
       }
-    } else if (u.down && d.tutorial === 0) {
+    } else if (u.down && d.tutorial < TUT_DONE) {
       // 튜토리얼 첫 전투는 지더라도 죽지 않음 (중상)
       r.fate = 'injured';
       hero.status = 'injured';
@@ -189,7 +190,6 @@ export function applyBattleResult(
   });
   const gold = win ? towerGold(floor, firstClear) : 0;
   d.gold += gold;
-  if (win && d.tutorial === 0) d.tutorial = 1;
   return { reports, rewards, events: [], gold };
 
   function gain(hero: Hero, r: HeroReport, t: HeroTrait, why: string): void {
