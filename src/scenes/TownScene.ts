@@ -1,5 +1,7 @@
 import { josa } from '../ui/josa';
-import { BH, BW, buildingTexture } from '../art/buildings';
+import Phaser from 'phaser';
+import { buildingTexture } from '../art/buildings';
+import { baseBg, buildingKey, drawCover, potionKey } from '../art/hd';
 import { matIcon } from '../art/itemArt';
 import {
   ALCHEMY_UNLOCK,
@@ -41,16 +43,19 @@ import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 
-/** 건물 자리: 가운데 광장을 둥글게 둘러싼 마을 (각도, 도). 위쪽 두 건물 사이로 탑 가는 길 */
-const PLOTS: Record<FacilityId, number> = {
-  dorm: 240,
-  recruit: 300,
-  smithy: 0,
-  hospital: 60,
-  alchemy: 120,
-  training: 180,
+/** 건물 자리: 광장 중심에서 (가로, 세로) px. 위 둘 사이로 탑 가는 길 */
+const PLOTS: Record<FacilityId, [number, number]> = {
+  dorm: [-170, -118],
+  recruit: [170, -118],
+  training: [-248, 78],
+  smithy: [248, 78],
+  alchemy: [-170, 280],
+  hospital: [170, 280],
 };
-const SCALE = 4.6;
+/** 건물 그림이 차지하는 폭 (px) */
+const BLD_W = 176;
+/** 그린 건물(256px)은 BLD_W에, 도트 건물은 예전 배율로 */
+const fitBld = (_scene: Phaser.Scene, key: string) => (key.startsWith('bld-') ? BLD_W / 256 : 4.6);
 
 const fmtLong = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -80,58 +85,15 @@ export class TownScene extends Page {
     const d = game.data;
     const now = Date.now();
 
-    // ── 하늘·땅 ──
+    // ── 배경 ──
     const top = PAGE_TOP + 96;
     const bottom = PAGE_BOTTOM - TAB_H;
-    const g = this.add.graphics();
-    g.fillStyle(0x1e2a44, 1).fillRect(0, PAGE_TOP, W, top + 120);
-    g.fillStyle(0x2a3a5a, 1).fillRect(0, top + 60, W, 60);
-    // 멀리 보이는 탑
-    g.fillStyle(0x151a2c, 1).fillRect(W / 2 - 34, PAGE_TOP + 10, 68, top + 110);
-    g.fillTriangle(W / 2 - 44, PAGE_TOP + 14, W / 2 + 44, PAGE_TOP + 14, W / 2, PAGE_TOP - 30);
-    for (let i = 0; i < 6; i++) g.fillStyle(0xffd27a, 0.5).fillRect(W / 2 - 4, PAGE_TOP + 30 + i * 30, 8, 10);
-    g.fillStyle(0x3a5a34, 1).fillRect(0, top + 120, W, bottom - top - 120);
-    this.drawHill(top);
-
-    // 둥근 마을: 광장 + 둘레길 + 건물로 가는 길
-    const cx0 = W / 2;
-    const cy0 = (top + 150 + bottom) / 2 + 10;
-    const rx = 232;
-    const ry = Math.min(330, (bottom - top - 260) / 2);
-    const pos = (id: FacilityId) => {
-      const a = (PLOTS[id] * Math.PI) / 180;
-      return { x: cx0 + Math.cos(a) * rx, y: cy0 + Math.sin(a) * ry };
-    };
-    const path = 0x7a6440;
-    g.fillStyle(path, 1).fillRect(cx0 - 26, top + 120, 52, cy0 - top - 120);
-    g.lineStyle(40, path, 1).strokeEllipse(cx0, cy0, rx * 2 - 40, ry * 2 - 60);
-    for (const id of FACILITY_IDS) {
-      const p = pos(id);
-      g.lineStyle(26, path, 1).lineBetween(cx0, cy0, p.x, p.y);
-    }
-    // 광장: 돌바닥 + 모닥불
-    g.fillStyle(0x8a7a5a, 1).fillCircle(cx0, cy0, 74);
-    g.fillStyle(0x9a8a6a, 1).fillCircle(cx0, cy0, 62);
-    g.lineStyle(2, 0x7a6a4a, 1);
-    for (let i = 0; i < 8; i++) {
-      const a = (i * Math.PI) / 4;
-      g.lineBetween(cx0 + Math.cos(a) * 24, cy0 + Math.sin(a) * 24, cx0 + Math.cos(a) * 62, cy0 + Math.sin(a) * 62);
-    }
-    g.strokeCircle(cx0, cy0, 24);
-    g.fillStyle(0x5a4a3a, 1).fillCircle(cx0, cy0, 18);
-    const fire = this.add.graphics();
-    fire.fillStyle(0xff8a3a, 1).fillTriangle(-12, 6, 12, 6, 0, -26);
-    fire.fillStyle(0xffd25a, 1).fillTriangle(-6, 6, 6, 6, 0, -12);
-    fire.setPosition(cx0, cy0);
-    this.tweens.add({ targets: fire, scaleY: 0.82, yoyo: true, repeat: -1, duration: 260 });
-    // 나무 몇 그루 (마을 바깥)
-    const trees: [number, number][] = [[40, cy0 - ry - 10], [W - 40, cy0 - ry - 10], [30, cy0 + 10], [W - 30, cy0 + 10], [60, cy0 + ry + 40], [W - 60, cy0 + ry + 40]];
-    for (const [tx, ty] of trees) {
-      if (ty > bottom - 20) continue;
-      g.fillStyle(0x5a3a2a, 1).fillRect(tx - 4, ty, 8, 18);
-      g.fillStyle(0x2e5a2a, 1).fillCircle(tx, ty - 6, 22);
-      g.fillStyle(0x3e7a3a, 1).fillCircle(tx - 6, ty - 12, 12);
-    }
+    const bg = drawCover(this, baseBg(d.facilities.dorm), 0, PAGE_TOP, W, bottom - PAGE_TOP, 0);
+    // 그림 속 광장 (424×632 기준 212, 355)과 지평선 (205)
+    const s = bg?.s ?? 1.86;
+    const cx0 = bg ? bg.ox + 212 * s : W / 2;
+    const cy0 = bg ? bg.oy + 355 * s : (top + bottom) / 2;
+    this.drawHill(bg ? bg.oy + 205 * s : top + 120);
 
     // ── 머리말 ──
     this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
@@ -139,41 +101,48 @@ export class TownScene extends Page {
     const builds = d.builds.length;
     this.add.text(W - 28, PAGE_TOP + 74, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
 
-    // ── 건물 ──
-    for (const id of FACILITY_IDS) {
-      const p = pos(id);
-      const cx = p.x;
-      const by = p.y + 30;
-      // 건물 아래 둥근 마당
-      g.fillStyle(0x4a6a3a, 1).fillEllipse(cx, by - 4, BW * SCALE * 0.95, 46);
+    // ── 건물: 광장을 둘러싼 여섯 자리 (광장 중심 기준, 아래 가장자리) ──
+    const order = [...FACILITY_IDS].sort((a, b) => PLOTS[a][1] - PLOTS[b][1]);
+    const labels: (() => void)[] = [];
+    for (const id of order) {
+      const [dx, dy] = PLOTS[id];
+      const cx = cx0 + dx;
+      const by = cy0 + dy;
       const lv = d.facilities[id];
       const build = d.builds.find((b) => b.id === id);
       const def = FACILITIES[id];
       const unlocked = d.test || lv > 0 || d.cleared >= def.unlock;
-      const img = this.add.image(cx, by, buildingTexture(this, lv > 0 ? id : 'lot')).setOrigin(0.5, 1).setScale(SCALE);
-      if (!unlocked) img.setAlpha(0.35);
-      if (build) this.add.image(cx, by, buildingTexture(this, 'scaffold')).setOrigin(0.5, 1).setScale(SCALE).setAlpha(0.9);
-      // 이름표
-      const label = lv > 0 ? `${def.name} Lv${lv}` : def.name;
-      const t = this.add.text(cx, by + 10, label, textStyle(22, lv > 0 ? C.text : C.dim, { stroke: '#14111c', strokeThickness: 5 })).setOrigin(0.5, 0);
-      let sub = '';
-      let subColor = C.dim;
-      if (build) {
-        sub = `건설 중 ${fmtLong(build.end - now)}`;
-        subColor = '#9fd0ff';
-      } else if (!unlocked) {
-        sub = `탑 ${def.unlock}층 클리어 후`;
-        subColor = C.faint;
-      } else if (lv === 0) {
-        sub = id === 'recruit' && tutActive() ? '무료 건설' : '건설 가능';
-        subColor = C.greenStr;
-      } else if (lv < FACILITY_MAX && canAffordBuild(id, d)) {
-        sub = '업그레이드 가능';
-        subColor = C.greenStr;
+      const key = (build && lv === 0 ? buildingKey(this, 'scaffold') : buildingKey(this, lv > 0 ? id : 'lot', lv)) ?? buildingTexture(this, lv > 0 ? id : 'lot');
+      const img = this.add.image(cx, by, key).setOrigin(0.5, 0.94).setScale(fitBld(this, key));
+      if (!unlocked) img.setTint(0x6a6a7a).setAlpha(0.6);
+      if (build && lv > 0) {
+        // 업그레이드 중: 옆에 작은 비계
+        const sk = buildingKey(this, 'scaffold');
+        if (sk) this.add.image(cx + BLD_W * 0.32, by + 4, sk).setOrigin(0.5, 0.94).setScale((BLD_W * 0.45) / 256);
       }
-      if (sub) this.add.text(cx, t.y + 30, sub, textStyle(18, subColor, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5, 0);
+      labels.push(() => {
+        const label = lv > 0 ? `${def.name} Lv${lv}` : def.name;
+        const t = this.add.text(cx, by + 4, label, textStyle(22, lv > 0 ? C.text : C.dim, { stroke: '#14111c', strokeThickness: 5 })).setOrigin(0.5, 0);
+        let sub = '';
+        let subColor = C.dim;
+        if (build) {
+          sub = `건설 중 ${fmtLong(build.end - now)}`;
+          subColor = '#9fd0ff';
+        } else if (!unlocked) {
+          sub = `탑 ${def.unlock}층 클리어 후`;
+          subColor = C.faint;
+        } else if (lv === 0) {
+          sub = id === 'recruit' && tutActive() ? '무료 건설' : '건설 가능';
+          subColor = C.greenStr;
+        } else if (lv < FACILITY_MAX && canAffordBuild(id, d)) {
+          sub = '업그레이드 가능';
+          subColor = C.greenStr;
+        }
+        if (sub) this.add.text(cx, t.y + 28, sub, textStyle(18, subColor, { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5, 0);
+      });
+      const zh = BLD_W * 0.95 + 50;
       this.add
-        .zone(cx, by - (BH * SCALE) / 2 + 30, BW * SCALE + 20, BH * SCALE + 60)
+        .zone(cx, by - BLD_W * 0.95 + zh / 2, BLD_W, zh)
         .setInteractive({ useHandCursor: true })
         .on('pointerup', () => {
           if (!unlocked) return;
@@ -183,10 +152,11 @@ export class TownScene extends Page {
           this.recruited = null;
           this.requestRender();
         });
-      this.mark(`plot-${id}`, cx - (BW * SCALE) / 2 - 10, by - BH * SCALE - 10, BW * SCALE + 20, BH * SCALE + 80);
+      this.mark(`plot-${id}`, cx - BLD_W / 2 - 6, by - BLD_W * 0.95 - 6, BLD_W + 12, zh + 12);
       // 새로 지을 수 있게 된 시설 안내 (처음 한 번)
       if (unlocked && lv === 0 && !build && id !== 'recruit' && !d.test) this.tip(`unlock-${id}`, `${josa(def.name, '을', '를')} 지을 수 있게 됐어.\n${def.desc}.`);
     }
+    for (const l of labels) l();
 
     if (this.open) {
       const id = this.open;
@@ -195,10 +165,8 @@ export class TownScene extends Page {
   }
 
   /** 영웅의 언덕 (GDD 3.8): 유산을 남긴 영웅의 비석·기념비·동상. 기여도 높은 순으로 최대 10개 */
-  private drawHill(top: number): void {
+  private drawHill(hy: number): void {
     const g = this.add.graphics();
-    const hy = top + 120;
-    g.fillStyle(0x2e4a2c, 1).fillEllipse(150, hy + 6, 340, 90).fillEllipse(570, hy + 6, 340, 90);
     const stones = fallen()
       .filter((h) => (h.legacy?.tier ?? 0) > 0)
       .sort((a, b) => b.legacy!.score - a.legacy!.score)
@@ -249,7 +217,8 @@ export class TownScene extends Page {
 
     const def = FACILITIES[id];
     const lv = d.facilities[id];
-    this.add.image(x + 90, y + 160, buildingTexture(this, lv > 0 ? id : 'lot')).setOrigin(0.5, 1).setScale(4);
+    const pk = buildingKey(this, lv > 0 ? id : 'lot', lv) ?? buildingTexture(this, lv > 0 ? id : 'lot');
+    this.add.image(x + 90, y + 170, pk).setOrigin(0.5, 0.94).setScale(pk.startsWith('bld-') ? 150 / 256 : 4);
     this.add.text(x + 180, y + 24, def.name, textStyle(44, C.goldStr));
     this.add.text(x + 180, y + 82, lv > 0 ? `Lv ${lv} / ${FACILITY_MAX}` : '아직 짓지 않음', textStyle(22, C.dim));
     this.add.text(x + 180, y + 114, def.desc, textStyle(18, C.dim, { wordWrap: { width: w - 200 } }));
@@ -429,10 +398,13 @@ export class TownScene extends Page {
       const p = POTIONS[pid];
       const ry = y + i * 110;
       const have = d.potions[pid] ?? 0;
-      this.add.text(x + 24, ry, `${p.name}  보유 ${have}`, textStyle(22));
-      this.add.text(x + 24, ry + 30, p.desc, textStyle(18, C.dim));
+      const pk = potionKey(this, pid);
+      const tx = pk ? x + 104 : x + 24;
+      if (pk) this.add.image(x + 54, ry + 40, pk).setScale(84 / 256);
+      this.add.text(tx, ry, `${p.name}  보유 ${have}`, textStyle(22));
+      this.add.text(tx, ry + 30, p.desc, textStyle(18, C.dim));
       const need = [...(Object.entries(p.mats) as [MaterialId, number][]).map(([k, v]) => ({ id: k, n: v }))];
-      this.add.text(x + 24, ry + 56, `골드 ${p.gold} · ${need.map((r) => `${MATERIALS[r.id].name} ${r.n}`).join(', ')}`, textStyle(18, C.faint));
+      this.add.text(tx, ry + 56, `골드 ${p.gold} · ${need.map((r) => `${MATERIALS[r.id].name} ${r.n}`).join(', ')}`, textStyle(18, C.faint));
       const can = d.gold >= p.gold && hasMats(d.materials, need);
       const bb = button(this, x + w - 90, ry + 30, 140, 56, '제조', () => {
         d.gold -= p.gold;

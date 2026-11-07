@@ -8,6 +8,7 @@ import { avgLevel, game, living, readyFormation } from '../state';
 import { FormationPanel } from '../ui/formationUi';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
+import { unitFit } from '../art/hd';
 import { button, chip, panel } from '../ui/widgets';
 
 /** 던전 탭 (GDD 6): 던전마다 1~10층. 사망 없음(쓰러지면 중상), 기력 -3, 클리어한 층은 소탕 */
@@ -81,7 +82,7 @@ export class DungeonScene extends Page {
     let ex = px + 20;
     for (const [id, n] of counts) {
       const m = MONSTERS[id as keyof typeof MONSTERS];
-      this.add.image(ex + 24, py + 202, `unit-${id}`).setScale(m.boss ? 3.6 : 3);
+      this.add.image(ex + 24, py + 202, `unit-${id}`).setScale(unitFit(this, id, m.boss ? 3.6 : 3, 4));
       const t = this.add.text(ex + 54, py + 180, `${m.name}${n > 1 ? ` ×${n}` : ''}`, textStyle(18, m.boss ? C.redStr : C.text));
       chip(this, ex + 54, py + 218, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);
       ex += Math.max(132, t.width + 70);

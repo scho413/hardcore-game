@@ -3,6 +3,7 @@ import { ensureHeroTextures } from '../art/textures';
 import { game, save } from '../state';
 import { guideHero, tutSkip } from '../tutorial/overlay';
 import { GUIDE_NAME } from '../tutorial/steps';
+import { unitScale } from '../art/hd';
 import { BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 
 /** 이야기 장면 (튜토리얼 시작). 탑이 무엇인지, 그리고 영웅은 죽으면 돌아오지 않는다는 경고 */
@@ -69,7 +70,7 @@ export class StoryScene extends Phaser.Scene {
     } else if (p.art === 'monsters') {
       const ids = ['goblin', 'orc', 'giant_spider', 'assassin', 'ogre_brute'];
       ids.forEach((id, i) => {
-        const img = this.add.image(120 + i * 120, cy + (i % 2 ? -40 : 30), `unit-${id}`).setScale(6).setAlpha(0);
+        const img = this.add.image(120 + i * 120, cy + (i % 2 ? -40 : 30), `unit-${id}`).setScale(unitScale(this, id, 6)).setAlpha(0);
         this.tweens.add({ targets: img, alpha: 1, duration: 400, delay: i * 140 });
       });
       g.fillStyle(0x3a1a1a, 0.4).fillRect(0, cy + 100, W, 6);
