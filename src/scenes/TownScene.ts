@@ -1,6 +1,7 @@
 import { josa } from '../ui/josa';
 import { buildingTexture } from '../art/buildings';
-import { baseBg, buildingKey, drawCover, fitScale, goldIcon, potionKey, resampled } from '../art/hd';
+import { baseBg, buildingKey, drawCover, fitScale, potionKey, resampled } from '../art/hd';
+import { ensureHeroTextures } from '../art/textures';
 import { matIcon } from '../art/itemArt';
 import {
   ALCHEMY_UNLOCK,
@@ -54,6 +55,9 @@ const PLOTS: Record<FacilityId, [number, number]> = {
 /** 건물 그림이 차지하는 폭 (px) */
 const BLD_W = 176;
 
+/** 칸이 좁을 때 큰 수 줄이기: 1234 → 1.2k */
+const short = (n: number, from: number) => (n >= from ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : `${n}`);
+
 const fmtLong = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
   const h = Math.floor(s / 3600);
@@ -85,7 +89,7 @@ export class TownScene extends Page {
     // ── 배경 ──
     const top = PAGE_TOP + 96;
     const bottom = PAGE_BOTTOM - TAB_H;
-    const bg = drawCover(this, baseBg(d.facilities.dorm), 0, PAGE_TOP, W, bottom - PAGE_TOP, 0);
+    const bg = drawCover(this, baseBg(Math.min(...FACILITY_IDS.map((f) => d.facilities[f]))), 0, PAGE_TOP, W, bottom - PAGE_TOP, 0);
     // 그림 속 광장 (가로 50%, 세로 56.2%)과 지평선 (32.4%). 그림 크기가 바뀌어도 비율로
     const bw = bg ? bg.img.width * bg.s : W;
     const bh = bg ? bg.img.height * bg.s : bottom - top;
@@ -94,10 +98,10 @@ export class TownScene extends Page {
     this.drawHill(bg ? bg.oy + bh * (205 / 632) : top + 120);
 
     // ── 머리말 ──
-    this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    goldIcon(this, this.add.text(W - 28, PAGE_TOP + 40, `${d.gold}`, textStyle(26, C.goldStr)).setOrigin(1, 0.5), 30);
+    this.drawProfile();
+    this.drawResources();
     const builds = d.builds.length;
-    this.add.text(W - 28, PAGE_TOP + 74, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
+    this.add.text(W - 28, PAGE_TOP + 56, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
 
     // ── 건물: 광장을 둘러싼 여섯 자리 (광장 중심 기준, 아래 가장자리) ──
     const order = [...FACILITY_IDS].sort((a, b) => PLOTS[a][1] - PLOTS[b][1]);
@@ -159,6 +163,50 @@ export class TownScene extends Page {
     if (this.open) {
       const id = this.open;
       this.layer(100, () => this.drawPanel(id));
+    }
+  }
+
+  /** 왼쪽 위 프로필: 대표 영웅(가장 높은 레벨) 얼굴, 이름, 최고 층·영웅 수 */
+  private drawProfile(): void {
+    const d = game.data;
+    const x = 16;
+    const y = PAGE_TOP + 14;
+    const g = this.add.graphics();
+    g.fillStyle(0x0b0910, 0.72).fillRoundedRect(x, y, 330, 82, 14);
+    g.lineStyle(2, C.gold, 0.8).strokeRoundedRect(x, y, 330, 82, 14);
+    g.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 8, y + 8, 66, 66, 10);
+    g.lineStyle(2, C.gold, 1).strokeRoundedRect(x + 8, y + 8, 66, 66, 10);
+    const lead = [...living()].sort((a, b) => b.level - a.level || (b.grade ?? 0) - (a.grade ?? 0))[0];
+    if (lead) {
+      ensureHeroTextures(this, lead);
+      this.add.image(x + 41, y + 41, `face-${lead.id}`).setScale(2.6);
+    } else if (this.textures.exists('advisor')) {
+      this.add.image(x + 41, y + 41, 'advisor').setDisplaySize(58, 58);
+    }
+    this.add.text(x + 86, y + 12, d.playerName ?? '영주', textStyle(26, C.goldStr));
+    this.add.text(x + 86, y + 48, `최고 ${d.cleared}층 · 영웅 ${living().length}명 · 전사 ${fallen().length}`, textStyle(18, C.dim));
+  }
+
+  /** 위쪽 자원 막대: 골드 + 재료 9종 */
+  private drawResources(): void {
+    const d = game.data;
+    const y = PAGE_TOP + 124;
+    const g = this.add.graphics();
+    g.fillStyle(0x0b0910, 0.72).fillRoundedRect(12, y - 22, W - 24, 44, 12);
+    const items: { key: string; n: number; w: number; name: string }[] = [{ key: 'gold', n: d.gold, w: 104, name: '골드' }];
+    for (const kind of ['metal', 'wood', 'crystal'] as const) {
+      for (const t of [1, 2, 3] as const) {
+        const id = `${kind}${t}` as MaterialId;
+        items.push({ key: id, n: d.materials[id] ?? 0, w: 64, name: MATERIALS[id].name });
+      }
+    }
+    const total = items.reduce((a, it) => a + it.w, 0);
+    let x = W / 2 - total / 2;
+    for (const it of items) {
+      const icon = it.key === 'gold' ? (this.textures.exists('mat-gold') ? 'mat-gold' : null) : matIcon(this, it.key as MaterialId);
+      if (icon) this.add.image(x + 14, y, icon).setDisplaySize(26, 26);
+      this.add.text(x + 30, y, short(it.n, it.key === 'gold' ? 1_000_000 : 1000), textStyle(18, it.key === 'gold' ? C.goldStr : it.n > 0 ? C.text : C.faint)).setOrigin(0, 0.5);
+      x += it.w;
     }
   }
 
