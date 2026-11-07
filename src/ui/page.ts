@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 import { fatigueNow } from '../data/heroes';
-import { game, refresh } from '../state';
-import { C, PAGE_BOTTOM, W, textStyle } from './theme';
+import { game, refresh, save } from '../state';
+import { drawDialog, resolveSpeaker, tutDone, tutSkip, tutStep, guideHero, type Rect } from '../tutorial/overlay';
+import { GUIDE_NAME } from '../tutorial/steps';
+import { ensureHeroTextures } from '../art/textures';
+import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from './theme';
 
 export type TabKey = 'base' | 'heroes' | 'tower' | 'dungeon' | 'codex';
 
@@ -23,6 +26,10 @@ export const TAB_H = 104;
 export abstract class Page extends Phaser.Scene {
   protected abstract tab: TabKey;
   private pending = false;
+  /** 튜토리얼이 강조할 수 있는 영역 (draw 중에 mark로 등록) */
+  private marks = new Map<string, Rect>();
+  /** 상황별 도움말 (처음 한 번) */
+  private pendingTip: { id: string; text: string } | null = null;
 
   create(): void {
     this.cameras.main.setScroll(0, 0);
@@ -59,8 +66,70 @@ export abstract class Page extends Phaser.Scene {
   render(): void {
     refresh();
     this.children.removeAll(true);
+    this.marks.clear();
     this.draw();
     this.drawTabs();
+    this.drawTutorial();
+  }
+
+  /** 튜토리얼 강조 대상 등록 */
+  mark(key: string, x: number, y: number, w: number, h: number): void {
+    this.marks.set(key, { x, y, w, h });
+  }
+
+  /** 상황별 도움말: 처음이면 다음 그리기에서 보여줌 */
+  tip(id: string, text: string): void {
+    const d = game.data;
+    if (tutStep()) return;
+    if ((d.tips ?? []).includes(id) || this.pendingTip) return;
+    this.pendingTip = { id, text };
+  }
+
+  private drawTutorial(): void {
+    const step = tutStep();
+    const top = PAGE_TOP;
+    const bottom = PAGE_BOTTOM;
+    if (step) {
+      if (step.scene !== this.scene.key) return;
+      const sp = resolveSpeaker(this, step);
+      drawDialog(this, {
+        name: sp.name,
+        face: sp.face,
+        text: sp.text,
+        target: step.target ? this.marks.get(step.target) : undefined,
+        mode: step.mode,
+        top,
+        bottom,
+        onTap: () => {
+          tutDone(step.id);
+          this.requestRender();
+        },
+        onSkip: () => {
+          tutSkip();
+          this.requestRender();
+        },
+      });
+      return;
+    }
+    if (this.pendingTip) {
+      const tp = this.pendingTip;
+      const g = guideHero();
+      ensureHeroTextures(this, g);
+      drawDialog(this, {
+        name: GUIDE_NAME,
+        face: `face-${g.id}`,
+        text: tp.text,
+        mode: 'tap',
+        top,
+        bottom,
+        onTap: () => {
+          game.data.tips = [...(game.data.tips ?? []), tp.id];
+          save();
+          this.pendingTip = null;
+          this.requestRender();
+        },
+      });
+    }
   }
 
   /** fn 안에서 만든 오브젝트를 모두 depth 위로 올림 (오버레이용) */
@@ -95,8 +164,6 @@ export abstract class Page extends Phaser.Scene {
     const d = game.data;
     // 잠금: 던전은 대장간을 지은 뒤 (GDD 9 튜토리얼)
     const lock = (k: TabKey) => (k === 'dungeon' && !d.test && d.facilities.smithy < 1 ? '대장간 필요' : null);
-    // 튜토리얼에서 가야 할 탭
-    const goal: TabKey | null = d.tutorial === 0 ? 'tower' : d.tutorial < 3 ? 'base' : null;
     TABS.forEach((t, i) => {
       const cx = w * i + w / 2;
       const active = t.key === this.tab;
@@ -106,16 +173,16 @@ export abstract class Page extends Phaser.Scene {
       const color = active ? C.goldStr : enabled ? C.text : C.faint;
       this.add.text(cx, top + TAB_H / 2 - (enabled ? 0 : 10), t.label, textStyle(22, color)).setOrigin(0.5).setDepth(91);
       if (!enabled) this.add.text(cx, top + TAB_H / 2 + 18, locked ?? '준비 중', textStyle(18, C.faint)).setOrigin(0.5).setDepth(91);
-      if (goal === t.key && !active) {
-        const dot = this.add.circle(cx + 30, top + 26, 9, C.red).setDepth(92);
-        this.tweens.add({ targets: dot, scale: 1.4, yoyo: true, repeat: -1, duration: 500 });
-      }
+      this.mark(`tab-${t.key}`, w * i, top, w, TAB_H);
       if (enabled && !active) {
         this.add
           .zone(cx, top + TAB_H / 2, w, TAB_H)
           .setDepth(92)
           .setInteractive({ useHandCursor: true })
-          .on('pointerup', () => this.go(t.scene!));
+          .on('pointerup', () => {
+            tutDone(`tab${t.key[0].toUpperCase()}${t.key.slice(1)}`);
+            this.go(t.scene!);
+          });
       }
     });
   }

@@ -4,6 +4,7 @@ import { FORMATIONS, FORMATION_IDS, slotPosition } from '../data/formations';
 import { canAfford } from '../data/heroes';
 import { game, heroById, living, save } from '../state';
 import { heroCard, shade, statusLine } from './heroUi';
+import { tutDone } from '../tutorial/overlay';
 import type { Page } from './page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from './theme';
 import { button, panel } from './widgets';
@@ -23,8 +24,11 @@ export class FormationPanel {
   ) {}
 
   /** 진형 패널을 그리고 아래쪽 y를 돌려줌 */
+  private firstEmptyMarked = false;
+
   draw(top: number, cost: number): number {
     const s = this.page;
+    this.firstEmptyMarked = false;
     const ftype = game.data.formationType;
     s.add.text(28, top, '진형', textStyle(33));
     s.add.text(110, top + 10, '칸을 탭해 영웅 배치 · 전열이 먼저 맞음', textStyle(18, C.dim));
@@ -61,6 +65,11 @@ export class FormationPanel {
         const x = W / 2 - total / 2 + k * (cardW + gap);
         const y = ry + 24;
         const hero = heroById(game.data.formation[slot]);
+        s.mark(`slot${slot}`, x, y, cardW, cardH);
+        if (!hero && !this.firstEmptyMarked) {
+          this.firstEmptyMarked = true;
+          s.mark('slot-empty', x, y, cardW, cardH);
+        }
         if (hero) {
           const st = statusLine(hero);
           const note = hero.status === 'ready' && !canAfford(hero, cost) ? { text: `${st.text} · ${this.costLabel} 불가`, color: C.redStr } : st;
@@ -74,10 +83,12 @@ export class FormationPanel {
       });
       ry += cardH + 34;
     }
+    s.mark('formation', 18, top - 8, W - 36, ry - top + 4);
     return ry;
   }
 
   private open(slot: number): void {
+    tutDone('slot');
     this.picking = slot;
     this.page.requestRender();
   }
@@ -122,6 +133,7 @@ export class FormationPanel {
       const blocked = h.status !== 'ready' && inSlot < 0;
       ensureHeroTextures(s, h);
       heroCard(s, x, y, cw, ch, h, { highlight: here, dim: blocked, note, onTap: blocked ? undefined : () => this.place(slot, h.id) });
+      if (h === heroes[heroes.length - 1]) s.mark('pick-new', x, y, cw, ch);
     });
 
     const by = py + ph - 62;
@@ -135,6 +147,7 @@ export class FormationPanel {
   }
 
   private place(slot: number, heroId: string): void {
+    tutDone('pick');
     const f = game.data.formation;
     const from = f.indexOf(heroId);
     if (from >= 0) f[from] = f[slot];

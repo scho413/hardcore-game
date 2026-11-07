@@ -6,6 +6,8 @@ import { TRAITS, TRAIT_MAX, traitDesc, traitName } from '../data/traits';
 import { drawChronicle } from '../ui/chronicle';
 import { game, living, resetProgress, rosterCap, save } from '../state';
 import type { MaterialId } from '../data/items';
+import { TUT_DONE } from '../tutorial/steps';
+import { tutSkip } from '../tutorial/overlay';
 import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { weaponIcon } from '../art/itemArt';
 import { GRADES, specialText, weaponDesc, weaponName } from '../data/items';
@@ -49,7 +51,7 @@ export class HeroesScene extends Page {
     const gd = game.data;
     button(this, W - 270, 140, 210, 64, gd.test ? '테스트 켜짐' : '테스트 모드', () => {
       gd.test = !gd.test;
-      if (gd.test && gd.tutorial < 3) gd.tutorial = 3;
+      if (gd.test && gd.tutorial < TUT_DONE) tutSkip();
       save();
       this.requestRender();
     }, { fill: gd.test ? 0xe0503a : C.panelHi, textColor: gd.test ? '#ffffff' : C.dim, size: 18 });

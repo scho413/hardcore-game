@@ -13,6 +13,8 @@ import { fmtTime } from '../ui/heroUi';
 import { FAMILIES, type Family } from '../data/races';
 import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { CodexScene } from './CodexScene';
+import { drawDialog, guideHero, resolveSpeaker, tutActive, tutDone, tutIs, tutSkip, type Rect } from '../tutorial/overlay';
+import { GUIDE_NAME, STEPS, TIPS, stepIndex } from '../tutorial/steps';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -105,7 +107,11 @@ export class BattleScene extends Phaser.Scene {
     // 희귀 몬스터 (던전 1~9층)
     const rare = !!this.dungeon && this.dfloor < DUNGEON_FLOORS && Math.random() < RARE_CHANCE;
     const enemies = this.dungeon ? buildDungeonEnemies(this.dungeon, this.dfloor, rare) : buildEnemies(this.floor);
-    const seed = randomSeed();
+    let seed = randomSeed();
+    // 튜토리얼 1층은 반드시 이기는 판으로 (첫 전투에서 지는 경험을 막음)
+    if (tutActive() && !this.dungeon) {
+      for (let i = 0; i < 200 && new Battle(allies, enemies, seed).runToEnd() !== 'win'; i++) seed = randomSeed();
+    }
 
     // 결과를 먼저 확정해서 저장 (전투는 시드로 결정되므로 화면과 결과가 같음).
     // 패배가 보일 때 앱을 꺼서 사망을 피하는 것을 막기 위함.
@@ -147,6 +153,8 @@ export class BattleScene extends Phaser.Scene {
 
   private async run(): Promise<void> {
     await this.intro();
+    await this.tutDialog('auto');
+    await this.tutDialog('speed', { x: W - 155, y: TOP + 23, w: 130, h: 64 });
     while (this.running) {
       const r = this.battle.step();
       if (!r) break;
@@ -682,7 +690,11 @@ export class BattleScene extends Phaser.Scene {
     if (dg) {
       box.add(button(this, 0, by, 440, 84, '던전으로', () => this.leave('dungeon', {}), { size: 33 }));
     } else if (win) {
-      box.add(button(this, 0, by, 440, 84, game.data.tutorial === 1 ? '기지로' : '귀환', () => this.leave(game.data.tutorial === 1 ? 'base' : 'tower', {}), { size: 33 }));
+      const tut = tutActive();
+      box.add(button(this, 0, by, 440, 84, tut ? '기지로' : '귀환', () => {
+        tutDone('home');
+        this.leave(tut ? 'base' : 'tower', {});
+      }, { size: 33 }));
     } else {
       box.add(button(this, -125, by, 220, 84, '탑으로', () => this.leave('tower', {}), { fill: C.panelHi, textColor: C.text, size: 22 }));
       box.add(button(this, 125, by, 220, 84, deaths > 0 ? '죽은 영웅' : '영웅 목록', () => {
@@ -691,12 +703,82 @@ export class BattleScene extends Phaser.Scene {
       }, { size: 22 }));
     }
     this.tweens.add({ targets: box, alpha: 1, y: { from: BASE_H / 2 + 30, to: BASE_H / 2 }, duration: 320, ease: 'Back.easeOut' });
+    // 튜토리얼: 결과·기력 설명 후 기지로 / 그 밖엔 처음 겪는 중상·사망 도움말
+    this.time.delayedCall(450, async () => {
+      if (tutIs('result')) {
+        await this.tutDialog('result', { x: 40, y: BASE_H / 2 - ph / 2 + 100, w: W - 80, h: ph - 210 });
+        await this.tutDialog('stamina');
+        if (tutIs('home')) void this.tutDialog('home', { x: W / 2 - 220, y: BASE_H / 2 + by - 42, w: 440, h: 84 });
+        return;
+      }
+      if (tutActive()) return;
+      if (deaths > 0) await this.tipDialog('death', TIPS.death);
+      else if (injured > 0) await this.tipDialog('injury', TIPS.injury);
+    });
   }
 
   /** 결과 창 연출은 배속과 무관하게 */
   private applySpeedReset(): void {
     this.tweens.timeScale = 1;
     this.time.timeScale = 1;
+  }
+
+  /** 튜토리얼 대사 1개. tap이면 누를 때까지 기다림, action이면 그려 두고 바로 돌아감 */
+  private tutDialog(id: string, target?: Rect): Promise<void> {
+    if (!tutIs(id)) return Promise.resolve();
+    const step = STEPS[stepIndex(id)];
+    const sp = resolveSpeaker(this, step);
+    return new Promise((res) => {
+      const before = new Set(this.children.list);
+      const clear = () => {
+        for (const o of [...this.children.list]) if (!before.has(o)) o.destroy();
+      };
+      drawDialog(this, {
+        name: sp.name,
+        face: sp.face,
+        text: sp.text,
+        target,
+        mode: step.mode,
+        top: TOP,
+        bottom: BOTTOM,
+        onTap: () => {
+          clear();
+          tutDone(id);
+          res();
+        },
+        onSkip: () => {
+          clear();
+          tutSkip();
+          res();
+        },
+      });
+      if (step.mode === 'action') res();
+    });
+  }
+
+  /** 상황별 도움말 (처음 한 번) */
+  private tipDialog(id: string, text: string): Promise<void> {
+    const d = game.data;
+    if ((d.tips ?? []).includes(id)) return Promise.resolve();
+    const g = guideHero();
+    ensureHeroTextures(this, g);
+    return new Promise((res) => {
+      const before = new Set(this.children.list);
+      drawDialog(this, {
+        name: GUIDE_NAME,
+        face: `face-${g.id}`,
+        text,
+        mode: 'tap',
+        top: TOP,
+        bottom: BOTTOM,
+        onTap: () => {
+          for (const o of [...this.children.list]) if (!before.has(o)) o.destroy();
+          d.tips = [...(d.tips ?? []), id];
+          save();
+          res();
+        },
+      });
+    });
   }
 
   private leave(scene: string, data: object): void {

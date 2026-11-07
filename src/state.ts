@@ -2,6 +2,7 @@ import type { ClassId } from './data/classes';
 import type { FormationId } from './data/formations';
 import { addLog, canAfford, gainXp, generateHero, heroLookKey, setLegacyTotals, setRecoveryScale, tickRecovery, type Hero } from './data/heroes';
 import { legacyTotals, makeLegacy } from './data/legacy';
+import { TUT_DONE } from './tutorial/steps';
 import { canAddTrait, traitName, type HeroTrait } from './data/traits';
 import {
   AD_SPEEDUP_MS,
@@ -37,12 +38,10 @@ export interface Build {
   end: number;
 }
 
-/** 튜토리얼: 0 탑 1층 → 1 모집소 건설 → 2 영웅 모집 → 3 끝 */
-export type TutorialStep = 0 | 1 | 2 | 3;
 
 /** 저장 데이터. v8: 골드, 기지 시설·건설, 모집소, 영웅 등급, 튜토리얼, 테스트 모드 */
 export interface SaveData {
-  v: 8;
+  v: 9;
   /** 살아있는 영웅 + 죽은 영웅 (status로 구분). 죽은 영웅은 추모의 벽에 표시 */
   heroes: Hero[];
   /** 진형 슬롯 5칸의 영웅 id (빈칸 = null) */
@@ -76,7 +75,10 @@ export interface SaveData {
   potions: Partial<Record<PotionId, number>>;
   /** 다음 전투에 쓸 영약 */
   elixirs: { might?: boolean; guard?: boolean; antidote?: boolean };
-  tutorial: TutorialStep;
+  /** 튜토리얼 단계 (tutorial/steps.ts STEPS 순서, 다 끝나면 STEPS.length) */
+  tutorial: number;
+  /** 이미 본 상황별 도움말 */
+  tips?: string[];
   /** 테스트 모드: 모든 층 바로 도전·정찰, 즉시 건설, 자원 지급 */
   test: boolean;
   /** 던전 보스에게서 들은 탑 구간 소문 (구간 번호) */
@@ -88,11 +90,12 @@ export interface SaveData {
   monsterKills?: Record<string, number>;
 }
 
-const KEY = 'hardcore-game/save/v8';
+const KEY = 'hardcore-game/save/v9';
+const OLD_KEY = 'hardcore-game/save/v8';
 
 function fresh(): SaveData {
   const d: SaveData = {
-    v: 8,
+    v: 9,
     heroes: [],
     formation: [null, null, null, null, null],
     formationType: 'basic',
@@ -135,7 +138,19 @@ function load(): SaveData {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const d = JSON.parse(raw) as SaveData;
-      if (d && d.v === 8 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
+      if (d && d.v === 9 && Array.isArray(d.heroes) && Array.isArray(d.formation)) return d;
+    }
+    // v8 → v9: 튜토리얼 단계가 바뀜. 이미 시작한 저장은 튜토리얼을 끝난 것으로
+    const old = localStorage.getItem(OLD_KEY);
+    if (old) {
+      const d = JSON.parse(old) as Omit<SaveData, 'v'> & { v: number };
+      if (d && d.v === 8 && Array.isArray(d.heroes)) {
+        const started = d.tutorial > 0;
+        d.tutorial = started ? TUT_DONE : 0;
+        if (started) d.facilities.recruit = Math.max(1, d.facilities.recruit);
+        d.v = 9;
+        return d as SaveData;
+      }
     }
   } catch {
     // 저장소를 쓸 수 없는 환경 → 메모리에서만 진행
@@ -202,7 +217,7 @@ export function recruit(d: SaveData = game.data, classId?: ClassId): Hero | null
   }
   // 진형 빈칸에 자동 배치
   const empty = d.formation.indexOf(null);
-  if (empty >= 0 && h) d.formation[empty] = h.id;
+  if (empty >= 0 && h && d.tutorial >= TUT_DONE) d.formation[empty] = h.id;
   return h;
 }
 
@@ -225,11 +240,10 @@ export function recruitDaily(kind: 'free' | 'ad', d: SaveData = game.data, now =
     d.recruitAds = 0;
   }
   const left = recruitLeft(d, now);
-  if (!d.test && d.tutorial !== 2 && (kind === 'free' ? left.free : left.ads) <= 0) return null;
+  if (!d.test && (kind === 'free' ? left.free : left.ads) <= 0) return null;
   const h = recruit(d);
   if (!h) return null;
-  if (d.tutorial === 2) d.tutorial = 3;
-  else if (kind === 'free') d.recruitFree++;
+  if (kind === 'free') d.recruitFree++;
   else d.recruitAds++;
   return h;
 }

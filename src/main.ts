@@ -6,6 +6,7 @@ import { BattleScene } from './scenes/BattleScene';
 import { CodexScene } from './scenes/CodexScene';
 import { HeroesScene } from './scenes/HeroesScene';
 import { TownScene } from './scenes/TownScene';
+import { StoryScene } from './scenes/StoryScene';
 import { SmithyScene } from './scenes/SmithyScene';
 import { DungeonScene } from './scenes/DungeonScene';
 import { ForgeScene } from './scenes/ForgeScene';
@@ -33,6 +34,6 @@ loadFont().then(() => {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
     },
-    scene: [BootScene, TowerScene, HeroesScene, CodexScene, BattleScene, TownScene, SmithyScene, DungeonScene, ForgeScene],
+    scene: [BootScene, TowerScene, HeroesScene, CodexScene, BattleScene, TownScene, SmithyScene, DungeonScene, ForgeScene, StoryScene],
   });
 });
