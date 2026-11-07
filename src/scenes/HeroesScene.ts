@@ -10,13 +10,14 @@ import { TUT_DONE } from '../tutorial/steps';
 import { tutSkip } from '../tutorial/overlay';
 import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statusLine, xpBar } from '../ui/heroUi';
 import { weaponIcon } from '../art/itemArt';
-import { GRADES, specialText, weaponDesc, weaponName } from '../data/items';
+import { GRADES, WEAPON_TYPES, specialText, weaponDesc, weaponName } from '../data/items';
 import { addFatigue, addLog, fatigueLevel } from '../data/heroes';
 import Phaser from 'phaser';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 import { fitScale } from '../art/hd';
+import { isAvailable } from '../state';
 import { FAMILIES } from '../data/races';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
@@ -106,7 +107,7 @@ export class HeroesScene extends Page {
       const x = 28 + (i % 2) * (cw + 14);
       const y = listTop + Math.floor(i / 2) * (ch + 12);
       const slot = game.data.formation.indexOf(h.id);
-      const note = slot >= 0 && h.status === 'ready' ? { text: `${ROW_LABEL[slotPosition(game.data.formationType, slot).row]} 배치`, color: C.goldStr } : statusLine(h);
+      const note = slot >= 0 && isAvailable(h) ? { text: `${ROW_LABEL[slotPosition(game.data.formationType, slot).row]} 배치`, color: C.goldStr } : statusLine(h);
       heroCard(this, x, y, cw, ch, h, {
         note,
         onTap: () => {
@@ -299,7 +300,11 @@ export class HeroesScene extends Page {
       this.add.text(x + w - 24 - 140, wy + 8, wpn.dur > 0 ? `내구 ${wpn.dur}` : '수리 필요', textStyle(18, wpn.dur > 30 ? C.faint : C.redStr)).setOrigin(1, 0);
       sp.forEach((t, i) => this.add.text(x + 44, wy + 64 + i * 26, t, textStyle(18, GRADES[wpn.grade].str)));
     } else {
-      this.add.text(x + 44, wy + 32, '무기 없음 · 대장간에서 제작', textStyle(18, C.faint)).setOrigin(0, 0.5);
+      // 연습용 무기: 무기를 안 줬을 때 들고 있는 것. 능력치 없음, 아이템이 아니라 팔거나 분해할 수 없음
+      const pk = weaponIcon(this, h.classId, 1, 0);
+      this.add.image(x + 62, wy + 32, pk).setScale(fitScale(this, pk, 3.4)).setTint(0xc8a070);
+      this.add.text(x + 98, wy + 8, `연습용 ${WEAPON_TYPES[h.classId].name}`, textStyle(22, C.dim));
+      this.add.text(x + 98, wy + 36, '추가 능력 없음 · 팔 수 없음 · 대장간에서 제작', textStyle(18, C.faint));
     }
     const spare = game.data.stash.filter((wp) => wp.cls === h.classId).length;
     const ab = button(this, x + w - 24 - 70, wy + 38, 124, 44, h.weapon ? '교체' : `장착 ${spare}`, () => {

@@ -14,17 +14,22 @@ import {
   RECRUIT_ADS,
   RECRUIT_FREE,
   buildCost,
+  hospitalSlots,
   recruitOdds,
   trainingSlots,
   type FacilityId,
   type PotionId,
 } from '../data/base';
-import { GRADES, MATERIALS, hasMats, spendMats, type MaterialId } from '../data/items';
+import { GRADES, MATERIALS, hasMats, spendMats, type MatKind, type MaterialId } from '../data/items';
 import type { Hero } from '../data/heroes';
 import { CodexScene } from './CodexScene';
 import { tutActive, tutDone } from '../tutorial/overlay';
 import {
+  admitHospital,
   buildSlots,
+  canAdmit,
+  dischargeHospital,
+  isAvailable,
   fallen,
   canAffordBuild,
   game,
@@ -71,6 +76,9 @@ export class TownScene extends Page {
   private open: FacilityId | null = null;
   private picking = false;
   private recruited: Hero | null = null;
+  private profileOpen = false;
+  /** 자원 칸 펼침 (2·3단계 재료) */
+  private resOpen = false;
 
   constructor() {
     super('base');
@@ -80,6 +88,7 @@ export class TownScene extends Page {
     this.open = null;
     this.picking = false;
     this.recruited = null;
+    this.profileOpen = false;
   }
 
   protected draw(): void {
@@ -100,8 +109,6 @@ export class TownScene extends Page {
     // ── 머리말 ──
     this.drawProfile();
     this.drawResources();
-    const builds = d.builds.length;
-    this.add.text(W - 28, PAGE_TOP + 56, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
 
     // ── 건물: 광장을 둘러싼 여섯 자리 (광장 중심 기준, 아래 가장자리) ──
     const order = [...FACILITY_IDS].sort((a, b) => PLOTS[a][1] - PLOTS[b][1]);
@@ -121,6 +128,13 @@ export class TownScene extends Page {
         // 업그레이드 중: 옆에 작은 비계
         const sk = buildingKey(this, 'scaffold');
         if (sk) this.add.image(Math.round(cx + BLD_W * 0.32), Math.round(by + 4), resampled(this, sk, Math.round(BLD_W * 0.45))).setOrigin(0.5, 0.94);
+      }
+      // 훈련장·병원: 자리마다 맡긴 영웅 얼굴 / 빈자리 (맡길 영웅이 있으면 초록 테두리)
+      if (lv > 0 && (id === 'training' || id === 'hospital')) {
+        const slots = id === 'training' ? trainingSlots(lv) : hospitalSlots(lv);
+        const inSlot = living().filter((p) => (id === 'training' ? p.status === 'training' : !!p.ward));
+        const canFill = living().some((p) => (id === 'training' ? isAvailable(p) : canAdmit(p)));
+        labels.push(() => this.drawSlotPips(cx, by - 24, slots, inSlot, canFill)); // 건물 앞마당 위
       }
       labels.push(() => {
         const label = lv > 0 ? `${def.name} Lv${lv}` : def.name;
@@ -160,20 +174,49 @@ export class TownScene extends Page {
     }
     for (const l of labels) l();
 
+    if (this.profileOpen) this.layer(100, () => this.drawProfileDetail());
     if (this.open) {
       const id = this.open;
       this.layer(100, () => this.drawPanel(id));
     }
   }
 
-  /** 왼쪽 위 프로필: 대표 영웅(가장 높은 레벨) 얼굴, 이름, 최고 층·영웅 수 */
+  /** 시설 위의 자리 표시: 채운 자리는 영웅 얼굴, 빈자리는 + */
+  private drawSlotPips(cx: number, y: number, slots: number, heroes: Hero[], canFill: boolean): void {
+    const r = 17;
+    const gap = 6;
+    const total = slots * r * 2 + (slots - 1) * gap;
+    const g = this.add.graphics();
+    for (let i = 0; i < slots; i++) {
+      const x = cx - total / 2 + r + i * (r * 2 + gap);
+      const hero = heroes[i];
+      g.fillStyle(0x14111c, 0.9).fillCircle(x, y, r);
+      if (hero) {
+        ensureHeroTextures(this, hero);
+        this.add.image(x, y + 2, `face-${hero.id}`).setScale(1.25);
+        g.lineStyle(3, C.gold, 1).strokeCircle(x, y, r);
+      } else {
+        g.lineStyle(3, canFill ? C.green : 0x5a5070, 1).strokeCircle(x, y, r);
+        this.add.text(x, y, '+', textStyle(22, canFill ? C.greenStr : C.faint)).setOrigin(0.5);
+      }
+    }
+    // 얼굴이 원 밖으로 나가지 않게 테두리를 위에 한 번 더
+    const top = this.add.graphics();
+    for (let i = 0; i < slots; i++) {
+      const x = cx - total / 2 + r + i * (r * 2 + gap);
+      if (heroes[i]) top.lineStyle(3, C.gold, 1).strokeCircle(x, y, r);
+    }
+  }
+
+  /** 왼쪽 위 프로필: 대표 영웅 얼굴, 이름, 탑 층. 누르면 자세히 */
   private drawProfile(): void {
     const d = game.data;
     const x = 16;
     const y = PAGE_TOP + 14;
+    const w = 236;
     const g = this.add.graphics();
-    g.fillStyle(0x0b0910, 0.72).fillRoundedRect(x, y, 330, 82, 14);
-    g.lineStyle(2, C.gold, 0.8).strokeRoundedRect(x, y, 330, 82, 14);
+    g.fillStyle(0x0b0910, 0.72).fillRoundedRect(x, y, w, 82, 14);
+    g.lineStyle(2, C.gold, 0.8).strokeRoundedRect(x, y, w, 82, 14);
     g.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 8, y + 8, 66, 66, 10);
     g.lineStyle(2, C.gold, 1).strokeRoundedRect(x + 8, y + 8, 66, 66, 10);
     const lead = [...living()].sort((a, b) => b.level - a.level || (b.grade ?? 0) - (a.grade ?? 0))[0];
@@ -184,30 +227,94 @@ export class TownScene extends Page {
       this.add.image(x + 41, y + 41, 'advisor').setDisplaySize(58, 58);
     }
     this.add.text(x + 86, y + 12, d.playerName ?? '영주', textStyle(26, C.goldStr));
-    this.add.text(x + 86, y + 48, `최고 ${d.cleared}층 · 영웅 ${living().length}명 · 전사 ${fallen().length}`, textStyle(18, C.dim));
+    this.add.text(x + 86, y + 48, `탑 ${d.cleared}층`, textStyle(22, C.text));
+    this.add.zone(x + w / 2, y + 41, w, 82).setInteractive({ useHandCursor: true }).on('pointerup', () => {
+      this.profileOpen = true;
+      this.requestRender();
+    });
+    const builds = d.builds.length;
+    this.add.text(x + 4, y + 96, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim, { stroke: '#14111c', strokeThickness: 4 }));
   }
 
-  /** 위쪽 자원 막대: 골드 + 재료 9종 */
+  /** 프로필 자세히 */
+  private drawProfileDetail(): void {
+    const d = game.data;
+    const close = () => {
+      this.profileOpen = false;
+      this.requestRender();
+    };
+    shade(this, PAGE_TOP, PAGE_BOTTOM - PAGE_TOP, close);
+    const x = 40;
+    const w = W - 80;
+    const y = PAGE_TOP + 140;
+    const dead = fallen();
+    const tiers = [1, 2, 3].map((t) => dead.filter((h) => h.legacy?.tier === t).length);
+    const kills = Object.values(d.monsterKills ?? {}).reduce((a, n) => a + n, 0);
+    const best = [...living()].sort((a, b) => b.level - a.level)[0];
+    const facSum = FACILITY_IDS.reduce((a, f) => a + d.facilities[f], 0);
+    const rows: [string, string][] = [
+      ['최고 층', `탑 ${d.cleared}층`],
+      ['영웅', `${living().length} / ${rosterCap(d)}명`],
+      ['최고 레벨', best ? `${best.name} Lv ${best.level}` : '-'],
+      ['전사한 영웅', `${dead.length}명`],
+      ['영웅의 언덕', `비석 ${tiers[0]} · 기념비 ${tiers[1]} · 동상 ${tiers[2]}`],
+      ['쓰러뜨린 몬스터', `${kills}마리`],
+      ['도감', `몬스터 ${(d.seen ?? []).length}종 발견`],
+      ['기지', `시설 레벨 합계 ${facSum} / ${FACILITY_IDS.length * FACILITY_MAX}`],
+    ];
+    const h = 150 + rows.length * 52 + 100;
+    panel(this, x, y, w, h, C.panel, C.gold);
+    this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive();
+    this.add.text(x + 28, y + 26, d.playerName ?? '영주', textStyle(44, C.goldStr));
+    this.add.text(x + 28, y + 86, '기지의 기록', textStyle(18, C.dim));
+    rows.forEach(([k, v], i) => {
+      const ry = y + 130 + i * 52;
+      this.add.text(x + 28, ry, k, textStyle(22, C.dim));
+      this.add.text(x + w - 28, ry, v, textStyle(22)).setOrigin(1, 0);
+    });
+    button(this, x + w / 2, y + h - 56, 240, 68, '닫기', close, { size: 22 });
+  }
+
+  /**
+   * 프로필 오른쪽 자원: 골드 · 나무 · 철 · 마석 (대장간 재료 배치처럼 종류별 세로줄).
+   * 평소엔 1단계만, 누르면 2·3단계까지 펼침
+   */
   private drawResources(): void {
     const d = game.data;
-    const y = PAGE_TOP + 124;
+    const x = 262;
+    const y = PAGE_TOP + 14;
+    const w = W - 16 - x;
+    const open = this.resOpen;
+    const rowH = 34;
+    const h = open ? 82 + rowH * 2 + 6 : 82;
     const g = this.add.graphics();
-    g.fillStyle(0x0b0910, 0.72).fillRoundedRect(12, y - 22, W - 24, 44, 12);
-    const items: { key: string; n: number; w: number; name: string }[] = [{ key: 'gold', n: d.gold, w: 104, name: '골드' }];
-    for (const kind of ['metal', 'wood', 'crystal'] as const) {
-      for (const t of [1, 2, 3] as const) {
-        const id = `${kind}${t}` as MaterialId;
-        items.push({ key: id, n: d.materials[id] ?? 0, w: 64, name: MATERIALS[id].name });
-      }
-    }
-    const total = items.reduce((a, it) => a + it.w, 0);
-    let x = W / 2 - total / 2;
-    for (const it of items) {
-      const icon = it.key === 'gold' ? (this.textures.exists('mat-gold') ? 'mat-gold' : null) : matIcon(this, it.key as MaterialId);
-      if (icon) this.add.image(x + 14, y, icon).setDisplaySize(26, 26);
-      this.add.text(x + 30, y, short(it.n, it.key === 'gold' ? 1_000_000 : 1000), textStyle(18, it.key === 'gold' ? C.goldStr : it.n > 0 ? C.text : C.faint)).setOrigin(0, 0.5);
-      x += it.w;
-    }
+    g.fillStyle(0x0b0910, 0.78).fillRoundedRect(x, y, w, h, 14);
+    g.lineStyle(2, C.gold, 0.5).strokeRoundedRect(x, y, w, h, 14);
+    const cols: { label: string; kind: 'gold' | MatKind }[] = [
+      { label: '골드', kind: 'gold' },
+      { label: '나무', kind: 'wood' },
+      { label: '철', kind: 'metal' },
+      { label: '마석', kind: 'crystal' },
+    ];
+    const cw = w / cols.length;
+    cols.forEach((c, i) => {
+      const cx = x + i * cw;
+      this.add.text(cx + 14, y + 10, c.label, textStyle(18, C.faint));
+      const tiers = c.kind === 'gold' ? [0] : open ? [1, 2, 3] : [1];
+      tiers.forEach((t, k) => {
+        const ry = y + 52 + k * rowH;
+        const id = c.kind === 'gold' ? null : (`${c.kind}${t}` as MaterialId);
+        const n = id ? d.materials[id] ?? 0 : d.gold;
+        const icon = id ? matIcon(this, id) : this.textures.exists('mat-gold') ? 'mat-gold' : null;
+        if (icon) this.add.image(cx + 26, ry, icon).setDisplaySize(28, 28);
+        this.add.text(cx + 44, ry, short(n, id ? 10000 : 1_000_000), textStyle(18, !id ? C.goldStr : n > 0 ? C.text : C.faint)).setOrigin(0, 0.5);
+      });
+    });
+    this.add.text(x + w - 12, y + h - 4, open ? '▲' : '▼', textStyle(18, C.faint)).setOrigin(1, 1);
+    this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive({ useHandCursor: true }).on('pointerup', () => {
+      this.resOpen = !this.resOpen;
+      this.requestRender();
+    });
   }
 
   /** 영웅의 언덕 (GDD 3.8): 유산을 남긴 영웅의 비석·기념비·동상. 기여도 높은 순으로 최대 10개 */
@@ -343,6 +450,7 @@ export class TownScene extends Page {
       else if (id === 'smithy') {
         button(this, x + w / 2, fy + 50, w - 48, 80, '대장간 들어가기', () => this.go('smithy'), { size: 30 });
       } else if (id === 'training') this.trainingPanel(x, fy, w, fh);
+      else if (id === 'hospital') this.hospitalPanel(x, fy, w);
       else if (id === 'alchemy') this.alchemyPanel(x, fy, w);
       else if (id === 'dorm') this.add.text(x + 24, fy + 10, `영웅 ${living().length} / ${rosterCap(d)}명`, textStyle(26));
     }
@@ -401,7 +509,7 @@ export class TownScene extends Page {
     const trainees = living().filter((x2) => x2.status === 'training');
     this.add.text(x + 24, y, `훈련 중 ${trainees.length}/${slots} · 레벨 상한 ${Math.max(1, d.cleared)} (최고 클리어 층)`, textStyle(18, C.dim));
     if (this.picking) {
-      const cands = living().filter((x2) => x2.status === 'ready');
+      const cands = living().filter((x2) => isAvailable(x2));
       this.add.text(x + 24, y + 30, '맡길 영웅 선택 (진형에서 빠짐)', textStyle(18, C.goldStr));
       const cw = (w - 60) / 2;
       cands.slice(0, 8).forEach((hero, i) => {
@@ -432,10 +540,53 @@ export class TownScene extends Page {
           this.picking = true;
           this.requestRender();
         }, { fill: C.panelHi, textColor: C.text, size: 22 });
-        b.setEnabled(living().some((x2) => x2.status === 'ready'));
+        b.setEnabled(living().some((x2) => isAvailable(x2)));
       }
     }
     void h;
+  }
+
+  /** 병원: 침대마다 영웅 1명 입원. 입원한 영웅만 빨리 낫고, 다 나으면 자동 퇴원 */
+  private hospitalPanel(x: number, y: number, w: number): void {
+    const d = game.data;
+    const beds = hospitalSlots(d.facilities.hospital);
+    const patients = living().filter((p) => p.ward);
+    this.add.text(x + 24, y, `입원 ${patients.length}/${beds} · 다 나으면 자동 퇴원 · 입원 중엔 출전 불가`, textStyle(18, C.dim));
+    if (this.picking) {
+      const cands = living().filter((p) => canAdmit(p));
+      this.add.text(x + 24, y + 30, '입원시킬 영웅 선택 (중상이거나 기력이 덜 찬 영웅)', textStyle(18, C.goldStr));
+      const cw = (w - 60) / 2;
+      cands.slice(0, 8).forEach((hero, i) => {
+        heroCard(this, x + 24 + (i % 2) * (cw + 12), y + 60 + Math.floor(i / 2) * 104, cw, 96, hero, {
+          onTap: () => {
+            admitHospital(hero);
+            this.picking = false;
+            save();
+            this.requestRender();
+          },
+        });
+      });
+      if (cands.length === 0) this.add.text(x + w / 2, y + 120, '입원할 영웅이 없습니다', textStyle(22, C.faint)).setOrigin(0.5);
+      return;
+    }
+    for (let i = 0; i < beds; i++) {
+      const sy = y + 36 + i * 108;
+      const hero = patients[i];
+      if (hero) {
+        heroCard(this, x + 24, sy, w - 220, 96, hero);
+        button(this, x + w - 100, sy + 48, 140, 60, '퇴원', () => {
+          dischargeHospital(hero);
+          save();
+          this.requestRender();
+        }, { fill: C.panelHi, textColor: C.text, size: 22 });
+      } else {
+        const b = button(this, x + w / 2, sy + 48, w - 48, 80, '+ 입원시키기', () => {
+          this.picking = true;
+          this.requestRender();
+        }, { fill: C.panelHi, textColor: C.text, size: 22 });
+        b.setEnabled(living().some((p) => canAdmit(p)));
+      }
+    }
   }
 
   private alchemyPanel(x: number, y: number, w: number): void {

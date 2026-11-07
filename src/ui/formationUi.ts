@@ -3,7 +3,7 @@ import { ensureHeroTextures } from '../art/textures';
 import { FORMATIONS, FORMATION_IDS, slotPosition } from '../data/formations';
 import { canAfford } from '../data/heroes';
 import { autoFormation } from '../data/autoFormation';
-import { game, heroById, living, save } from '../state';
+import { game, heroById, isAvailable, living, save } from '../state';
 import { heroCard, shade, statusLine } from './heroUi';
 import { tutDone } from '../tutorial/overlay';
 import type { Page } from './page';
@@ -39,7 +39,7 @@ export class FormationPanel {
       save();
       s.requestRender();
     }, { fill: C.panelHi, textColor: C.goldStr, size: 18 });
-    auto.setEnabled(living().some((h) => h.status === 'ready' && canAfford(h, cost)));
+    auto.setEnabled(living().some((h) => isAvailable(h) && canAfford(h, cost)));
 
     // 진형 종류 (GDD 4.1.1)
     const cw = 124;
@@ -80,7 +80,7 @@ export class FormationPanel {
         }
         if (hero) {
           const st = statusLine(hero);
-          const note = hero.status === 'ready' && !canAfford(hero, cost) ? { text: `${st.text} · ${this.costLabel} 불가`, color: C.redStr } : st;
+          const note = isAvailable(hero) && !canAfford(hero, cost) ? { text: `${st.text} · ${this.costLabel} 불가`, color: C.redStr } : st;
           heroCard(s, x, y, cardW, cardH, hero, { note, onTap: () => this.open(slot) });
         } else {
           const g = s.add.graphics();
@@ -135,10 +135,10 @@ export class FormationPanel {
       const inSlot = game.data.formation.indexOf(h.id);
       const here = inSlot === slot;
       let note = statusLine(h);
-      if (h.status === 'ready' && !canAfford(h, cost)) note = { text: `${note.text} · ${this.costLabel} 불가`, color: C.redStr };
+      if (isAvailable(h) && !canAfford(h, cost)) note = { text: `${note.text} · ${this.costLabel} 불가`, color: C.redStr };
       if (inSlot >= 0 && !here) note = { text: `${ROW_LABEL[slotPosition(game.data.formationType, inSlot).row]} 배치 중`, color: C.goldStr };
       else if (here) note = { text: '지금 이 자리', color: C.goldStr };
-      const blocked = h.status !== 'ready' && inSlot < 0;
+      const blocked = !isAvailable(h) && inSlot < 0;
       ensureHeroTextures(s, h);
       heroCard(s, x, y, cw, ch, h, { highlight: here, dim: blocked, note, onTap: blocked ? undefined : () => this.place(slot, h.id) });
       if (h === heroes[heroes.length - 1]) s.mark('pick-new', x, y, cw, ch);

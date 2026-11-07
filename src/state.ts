@@ -1,6 +1,6 @@
 import type { ClassId } from './data/classes';
 import type { FormationId } from './data/formations';
-import { addLog, canAfford, gainXp, generateHero, heroLookKey, setLegacyTotals, setRecoveryScale, tickRecovery, type Hero } from './data/heroes';
+import { addLog, canAfford, fatigueNow, gainXp, generateHero, heroLookKey, setLegacyTotals, setRecoveryScale, tickRecovery, type Hero } from './data/heroes';
 import { legacyTotals, makeLegacy } from './data/legacy';
 import { TUT_DONE } from './tutorial/steps';
 import { canAddTrait, traitName, type HeroTrait } from './data/traits';
@@ -317,6 +317,45 @@ function tickTraining(d: SaveData, now: number): boolean {
   return changed;
 }
 
+// ─── 병원 (입원한 영웅만 빨리 회복) ───
+/** 입원할 수 있는 영웅: 다쳤거나 기력이 덜 찼고, 훈련 중이 아님 */
+export function canAdmit(h: Hero, now = Date.now()): boolean {
+  return !h.ward && (h.status === 'injured' || (h.status === 'ready' && fatigueNow(h, now) > 0));
+}
+
+export function admitHospital(h: Hero, now = Date.now()): void {
+  // 지금까지의 회복을 기본 속도로 정산한 뒤 입원 (이후부터 빠르게)
+  h.fatigue = fatigueNow(h, now);
+  h.fatigueAt = now;
+  const scale = hospitalSpeed(game.data.facilities.hospital) * (1 + legacyTotals(game.data.heroes.map((x) => x.legacy)).hospital);
+  if (h.status === 'injured' && h.injuredUntil) h.injuredUntil = now + (h.injuredUntil - now) / scale;
+  h.ward = now;
+  h.wardScale = scale;
+  game.data.formation = game.data.formation.map((id) => (id === h.id ? null : id));
+}
+
+export function dischargeHospital(h: Hero, now = Date.now()): void {
+  h.fatigue = fatigueNow(h, now);
+  h.fatigueAt = now;
+  if (h.status === 'injured' && h.injuredUntil) h.injuredUntil = now + (h.injuredUntil - now) * (h.wardScale ?? 1);
+  delete h.ward;
+  delete h.wardScale;
+}
+
+/** 다 나은 입원 영웅은 자동 퇴원 */
+function tickHospital(d: SaveData, now: number): boolean {
+  let changed = false;
+  for (const h of d.heroes) {
+    if (!h.ward) continue;
+    if (h.status === 'dead' || (h.status === 'ready' && fatigueNow(h, now) <= 0)) {
+      dischargeHospital(h, now);
+      if (h.status !== 'dead') addLog(h, '병원에서 퇴원', 'info', now);
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 export function startTraining(h: Hero, now = Date.now()): void {
   h.status = 'training';
   h.trainSince = now;
@@ -345,6 +384,7 @@ export function refresh(now = Date.now()): void {
   let changed = tickRecovery(d.heroes, now);
   if (finishBuilds(d, now)) changed = true;
   if (tickTraining(d, now)) changed = true;
+  if (tickHospital(d, now)) changed = true;
   d.formation = d.formation.map((id) => {
     const h = heroById(id, d);
     if (id && (!h || h.status === 'dead')) {
@@ -360,11 +400,16 @@ export function refresh(now = Date.now()): void {
  * 진형에 있고 출전 가능한 영웅 (슬롯 번호 포함).
  * cost: 출전 기력 비용 (탑 5, 던전 3). 기력이 모자라면 빠짐 (GDD 3.2.1)
  */
+/** 출전·훈련에 쓸 수 있는 영웅 (대기 중이고 입원하지 않음) */
+export function isAvailable(h: Hero): boolean {
+  return h.status === 'ready' && !h.ward;
+}
+
 export function readyFormation(cost = 0, d: SaveData = game.data, now = Date.now()): { hero: Hero; slot: number }[] {
   const out: { hero: Hero; slot: number }[] = [];
   d.formation.forEach((id, slot) => {
     const h = heroById(id, d);
-    if (h && h.status === 'ready' && canAfford(h, cost, now)) out.push({ hero: h, slot });
+    if (h && isAvailable(h) && canAfford(h, cost, now)) out.push({ hero: h, slot });
   });
   return out;
 }

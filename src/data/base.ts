@@ -24,6 +24,8 @@ export const DORM_CAP = [5, 6, 7, 8, 10, 11, 12, 14, 16, 20];
 export const hospitalSpeed = (lv: number) => (lv <= 0 ? 1 : 1 + 0.12 * lv);
 /** 훈련장: 자리 수, 시간당 경험치, 최대 누적 시간 */
 export const trainingSlots = (lv: number) => (lv <= 0 ? 0 : 1 + Math.floor(lv / 3));
+/** 병원 침대 수 (입원한 영웅만 빨리 회복) */
+export const hospitalSlots = (lv: number) => (lv <= 0 ? 0 : 1 + Math.floor(lv / 3));
 export const trainingXpPerHour = (lv: number) => (lv <= 0 ? 0 : Math.round(40 * Math.pow(1.25, lv - 1)));
 export const TRAINING_MAX_MS = 8 * 60 * 60 * 1000;
 /** 대장간: 레벨별 최고 제작 난이도 (DIFFICULTIES 인덱스) */
@@ -53,7 +55,7 @@ export const FACILITIES: Record<FacilityId, FacilityDef> = {
   dorm: { id: 'dorm', name: '숙소', desc: '영웅들이 지내는 곳', mat: 'wood', unlock: 0, effect: (lv) => `영웅 최대 ${DORM_CAP[lv - 1]}명` },
   recruit: { id: 'recruit', name: '모집소', desc: '하루 1명 무료, 광고로 2명 더', mat: 'wood', unlock: 1, effect: (lv) => `상급 이상 ${Math.round(recruitOdds(lv).slice(2).reduce((a, b) => a + b, 0))}%` },
   smithy: { id: 'smithy', name: '대장간', desc: '직업 전용 무기 제작·수리', mat: 'metal', unlock: 3, effect: (lv) => `제작 난이도 ${['쉬움', '보통', '어려움', '전설', '신화', '초월'][SMITHY_MAX_DIFF[lv - 1]]}까지` },
-  hospital: { id: 'hospital', name: '병원', desc: '중상과 기력 회복을 빠르게', mat: 'crystal', unlock: 4, effect: (lv) => `회복 속도 ×${hospitalSpeed(lv).toFixed(2)}` },
+  hospital: { id: 'hospital', name: '병원', desc: '입원시킨 영웅의 중상·기력 회복을 빠르게 (입원 중엔 출전 불가)', mat: 'crystal', unlock: 4, effect: (lv) => `침대 ${hospitalSlots(lv)}개 · 회복 속도 ×${hospitalSpeed(lv).toFixed(2)}` },
   training: { id: 'training', name: '훈련장', desc: '맡겨둔 영웅이 시간마다 경험치를 얻음 (최대 8시간)', mat: 'metal', unlock: 6, effect: (lv) => `${trainingSlots(lv)}자리 · 시간당 경험치 ${trainingXpPerHour(lv)}` },
   alchemy: { id: 'alchemy', name: '연금소', desc: '물약·영약 제조', mat: 'crystal', unlock: 8, effect: (lv) => `물약 ${ALCHEMY_UNLOCK[lv - 1]}종` },
 };
