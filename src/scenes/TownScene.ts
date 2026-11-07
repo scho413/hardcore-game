@@ -86,11 +86,12 @@ export class TownScene extends Page {
     const top = PAGE_TOP + 96;
     const bottom = PAGE_BOTTOM - TAB_H;
     const bg = drawCover(this, baseBg(d.facilities.dorm), 0, PAGE_TOP, W, bottom - PAGE_TOP, 0);
-    // 그림 속 광장 (424×632 기준 212, 355)과 지평선 (205)
-    const s = bg?.s ?? 1.86;
-    const cx0 = bg ? bg.ox + 212 * s : W / 2;
-    const cy0 = bg ? bg.oy + 355 * s : (top + bottom) / 2;
-    this.drawHill(bg ? bg.oy + 205 * s : top + 120);
+    // 그림 속 광장 (가로 50%, 세로 56.2%)과 지평선 (32.4%). 그림 크기가 바뀌어도 비율로
+    const bw = bg ? bg.img.width * bg.s : W;
+    const bh = bg ? bg.img.height * bg.s : bottom - top;
+    const cx0 = bg ? bg.ox + bw * 0.5 : W / 2;
+    const cy0 = bg ? bg.oy + bh * (355 / 632) : (top + bottom) / 2;
+    this.drawHill(bg ? bg.oy + bh * (205 / 632) : top + 120);
 
     // ── 머리말 ──
     this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
