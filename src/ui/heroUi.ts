@@ -15,7 +15,8 @@ export function fmtTime(ms: number): string {
 /** 상태 한 줄: 중상이면 남은 시간 */
 export function statusLine(h: Hero, now = Date.now()): { text: string; color: string } {
   if (h.status === 'dead') return { text: `${h.diedFloor}층에서 사망`, color: C.redStr };
-  if (h.status === 'injured') return { text: `중상 ${fmtTime((h.injuredUntil ?? now) - now)}`, color: '#ff9a4a' };
+  if (h.status === 'injured') return { text: `${h.ward ? '입원 · ' : ''}중상 ${fmtTime((h.injuredUntil ?? now) - now)}`, color: '#ff9a4a' };
+  if (h.ward) return { text: `입원 · 기력 ${FATIGUE_MAX - fatigueLevel(h, now)}/${FATIGUE_MAX}`, color: '#8fe0a0' };
   if (h.status === 'training') return { text: '훈련 중', color: '#9fd0ff' };
   const f = fatigueLevel(h, now);
   if (f > 0) return { text: `기력 ${FATIGUE_MAX - f}/${FATIGUE_MAX} -${Math.round(f * FATIGUE_PENALTY * 100)}%`, color: FATIGUE_MAX - f < 5 ? '#ff9a4a' : C.goldStr };

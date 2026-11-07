@@ -9,6 +9,7 @@ import { FormationPanel } from '../ui/formationUi';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { unitFit } from '../art/hd';
+import { isAvailable } from '../state';
 import { button, chip, panel } from '../ui/widgets';
 
 /** 던전 탭 (GDD 6): 던전마다 1~10층. 사망 없음(쓰러지면 중상), 기력 -3, 클리어한 층은 소탕 */
@@ -35,7 +36,7 @@ export class DungeonScene extends Page {
 
     this.add.text(32, PAGE_TOP + 52, '던전', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
     this.add.text(170, PAGE_TOP + 58, '재료·특성 · 쓰러지면 중상', textStyle(22, C.dim)).setOrigin(0, 0.5);
-    const ready = living().filter((h) => h.status === 'ready' && canAfford(h, FATIGUE_DUNGEON)).length;
+    const ready = living().filter((h) => isAvailable(h) && canAfford(h, FATIGUE_DUNGEON)).length;
     this.add.text(W - 28, PAGE_TOP + 58, `출전 가능 영웅 ${ready}명`, textStyle(18, C.faint)).setOrigin(1, 0.5);
 
     // 던전 선택

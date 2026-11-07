@@ -41,7 +41,7 @@ function permutations<T>(a: T[]): T[][] {
  */
 export function autoFormation(heroes: Hero[], formation: FormationId, cost: number, now = Date.now()): (string | null)[] {
   const rows = FORMATIONS[formation].rows;
-  const ready = heroes.filter((h) => h.status === 'ready' && canAfford(h, cost, now)).sort((a, b) => power(b) - power(a));
+  const ready = heroes.filter((h) => h.status === 'ready' && !h.ward && canAfford(h, cost, now)).sort((a, b) => power(b) - power(a));
   if (ready.length === 0) return [null, null, null, null, null];
 
   // 1) 영웅 고르기

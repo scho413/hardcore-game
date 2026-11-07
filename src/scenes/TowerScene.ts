@@ -11,6 +11,7 @@ import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, chip, panel } from '../ui/widgets';
 import { unitScale } from '../art/hd';
+import { isAvailable } from '../state';
 import { FAMILIES } from '../data/races';
 
 const LADDER_ROW = 40;
@@ -53,7 +54,7 @@ export class TowerScene extends Page {
 
   private drawHeader(): void {
     this.add.text(32, PAGE_TOP + 52, '탑', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    const ready = living().filter((h) => h.status === 'ready' && canAfford(h, FATIGUE_TOWER)).length;
+    const ready = living().filter((h) => isAvailable(h) && canAfford(h, FATIGUE_TOWER)).length;
     this.add.text(110, PAGE_TOP + 58, `최고 ${game.data.cleared}층 클리어`, textStyle(22, C.dim)).setOrigin(0, 0.5);
     this.add.text(W - 28, PAGE_TOP + 58, `출전 가능 영웅 ${ready}명`, textStyle(18, C.faint)).setOrigin(1, 0.5);
   }

@@ -41,6 +41,10 @@ export interface Hero {
   status: HeroStatus;
   /** 중상 회복 시각 (epoch ms) */
   injuredUntil?: number;
+  /** 병원에 입원한 시각 (입원 중이면 있음). 입원 중엔 회복이 빠르고 출전·훈련 불가 */
+  ward?: number;
+  /** 입원할 때의 병원 회복 배율 (퇴원할 때 남은 중상 시간 계산용) */
+  wardScale?: number;
   /** 도전해 본 가장 높은 층 / 클리어한 가장 높은 층 */
   bestFloor: number;
   bestCleared: number;
@@ -68,7 +72,7 @@ export interface Hero {
 // ─── 수치 (GDD 16 미정 사항 → 임시값) ───
 /** 영웅 등급별 개체값 범위 (GDD 8) */
 export const GRADE_STAT: [number, number][] = [[-0.06, 0.06], [-0.02, 0.08], [0.04, 0.12], [0.1, 0.18], [0.16, 0.24], [0.24, 0.32]];
-/** 병원 레벨에 따른 회복 속도 (state.refresh가 설정) */
+/** 병원 레벨에 따른 회복 속도 (state.refresh가 설정). 병원에 입원한 영웅에게만 적용 */
 let recoveryScale = 1;
 /** 죽은 영웅들의 유산 합계 (state.refresh가 설정) */
 let legacy: LegacyTotals = emptyTotals();
@@ -77,6 +81,10 @@ export function setLegacyTotals(t: LegacyTotals): void {
 }
 export function setRecoveryScale(x: number): void {
   recoveryScale = x;
+}
+/** 이 영웅의 회복 배율: 입원 중이면 병원 배율, 아니면 1 */
+export function wardScale(h: Pick<Hero, 'ward'>): number {
+  return h.ward ? recoveryScale : 1;
 }
 /** 중상 회복 시간 */
 export const INJURY_MS = 5 * 60 * 1000;
@@ -111,16 +119,16 @@ export const FATIGUE_PENALTY = 0.03;
 export const FATIGUE_RECOVER_MS = 6 * 60 * 1000;
 
 /** 지금 피로 (시간 경과 반영, 소수) */
-export function fatigueNow(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
-  return Math.max(0, (h.fatigue ?? 0) - ((now - (h.fatigueAt ?? now)) * recoveryScale) / FATIGUE_RECOVER_MS);
+export function fatigueNow(h: Pick<Hero, 'fatigue' | 'fatigueAt' | 'ward'>, now = Date.now()): number {
+  return Math.max(0, (h.fatigue ?? 0) - ((now - (h.fatigueAt ?? now)) * wardScale(h)) / FATIGUE_RECOVER_MS);
 }
 
 /** 화면·능력치 계산용 피로 (올림 정수) */
-export function fatigueLevel(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
+export function fatigueLevel(h: Pick<Hero, 'fatigue' | 'fatigueAt' | 'ward'>, now = Date.now()): number {
   return Math.ceil(fatigueNow(h, now) - 1e-9);
 }
 
-export function canAfford(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, cost: number, now = Date.now()): boolean {
+export function canAfford(h: Pick<Hero, 'fatigue' | 'fatigueAt' | 'ward'>, cost: number, now = Date.now()): boolean {
   return fatigueLevel(h, now) + cost <= FATIGUE_MAX;
 }
 
@@ -130,10 +138,10 @@ export function addFatigue(h: Hero, cost: number, now = Date.now()): void {
 }
 
 /** 다음 피로 1이 회복될 때까지 남은 시간 */
-export function fatigueNextMs(h: Pick<Hero, 'fatigue' | 'fatigueAt'>, now = Date.now()): number {
+export function fatigueNextMs(h: Pick<Hero, 'fatigue' | 'fatigueAt' | 'ward'>, now = Date.now()): number {
   const f = fatigueNow(h, now);
   if (f <= 0) return 0;
-  return ((f - Math.floor(f - 1e-9)) * FATIGUE_RECOVER_MS) / recoveryScale;
+  return ((f - Math.floor(f - 1e-9)) * FATIGUE_RECOVER_MS) / wardScale(h);
 }
 
 /** 종족 출현 비율 */
@@ -347,7 +355,7 @@ export function gainXp(h: Hero, xp: number): number {
 
 export function injuryDuration(h: Hero): number {
   const te = traitEffects(h.traits, { floor: 1 });
-  return Math.round((INJURY_MS * Math.max(0.25, 1 + te.injury)) / recoveryScale);
+  return Math.round(INJURY_MS * Math.max(0.25, 1 + te.injury)); // 다친 직후엔 입원 전이므로 기본 속도
 }
 
 export function addLog(h: Hero, text: string, tone: LogEntry['tone'] = 'info', t = Date.now()): void {

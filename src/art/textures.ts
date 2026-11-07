@@ -22,9 +22,13 @@ export function makeGridTexture(scene: Phaser.Scene, key: string, grid: Grid): v
   tex.refresh();
 }
 
+/** 연습용 무기 색 (나무) */
+const PRACTICE_COLOR = '#9a7a52';
+
 export function heldWeapon(hero: Hero): HeldWeapon | undefined {
   const w = hero.weapon;
-  if (!w) return undefined;
+  // 무기를 안 줬으면 연습용 무기 (나무색, 능력치 없음)
+  if (!w) return { art: WEAPON_TYPES[hero.classId].art, color: PRACTICE_COLOR, glow: false };
   return { art: WEAPON_TYPES[w.cls].art, color: `#${GRADES[w.grade].color.toString(16).padStart(6, '0')}`, glow: w.grade >= 3 };
 }
 
