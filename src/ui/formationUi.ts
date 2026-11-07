@@ -2,6 +2,7 @@ import type { Row } from '../battle/types';
 import { ensureHeroTextures } from '../art/textures';
 import { FORMATIONS, FORMATION_IDS, slotPosition } from '../data/formations';
 import { canAfford } from '../data/heroes';
+import { autoFormation } from '../data/autoFormation';
 import { game, heroById, living, save } from '../state';
 import { heroCard, shade, statusLine } from './heroUi';
 import { tutDone } from '../tutorial/overlay';
@@ -32,6 +33,13 @@ export class FormationPanel {
     const ftype = game.data.formationType;
     s.add.text(28, top, '진형', textStyle(33));
     s.add.text(110, top + 10, '칸을 탭해 영웅 배치 · 전열이 먼저 맞음', textStyle(18, C.dim));
+    // 자동 배치: 고른 진형에 맞춰 출전 가능한 영웅으로 가장 좋은 조합 (적 정보는 쓰지 않음)
+    const auto = button(s, W - 104, top + 18, 156, 48, '자동 배치', () => {
+      game.data.formation = autoFormation(living(), ftype, cost);
+      save();
+      s.requestRender();
+    }, { fill: C.panelHi, textColor: C.goldStr, size: 18 });
+    auto.setEnabled(living().some((h) => h.status === 'ready' && canAfford(h, cost)));
 
     // 진형 종류 (GDD 4.1.1)
     const cw = 124;

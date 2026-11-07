@@ -12,13 +12,16 @@ import { TRAIT_COLOR, classRole, fatigueDetail, heroCard, raceChip, shade, statu
 import { weaponIcon } from '../art/itemArt';
 import { GRADES, specialText, weaponDesc, weaponName } from '../data/items';
 import { addFatigue, addLog, fatigueLevel } from '../data/heroes';
-import { Page } from '../ui/page';
+import Phaser from 'phaser';
+import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
 import { fitScale } from '../art/hd';
 import { FAMILIES } from '../data/races';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
+/** 영웅 목록이 시작하는 높이 (머리말 아래) */
+const LIST_TOP = 196;
 
 /** 영웅 탭: 로스터 목록 + 상세 + (임시) 모집 */
 export class HeroesScene extends Page {
@@ -30,12 +33,60 @@ export class HeroesScene extends Page {
   private flash = '';
   /** 무기 교체창 */
   private arming = false;
+  // ── 목록 스크롤 ──
+  private scroll = 0;
+  private maxScroll = 0;
+  private list: Phaser.GameObjects.Container | null = null;
+  private listArea = { top: 0, bottom: 0 };
+  private bar: Phaser.GameObjects.Rectangle | null = null;
+  private barInfo = { trackH: 0, barH: 0 };
+  private drag: { y: number; scroll: number } | null = null;
+  private dragMoved = false;
+  private inputBound = false;
+
+  private setScroll(v: number): void {
+    this.scroll = Phaser.Math.Clamp(v, 0, this.maxScroll);
+    if (this.list?.active) this.list.y = -this.scroll;
+    if (this.bar?.active && this.maxScroll > 0) {
+      const { trackH, barH } = this.barInfo;
+      this.bar.y = this.listArea.top + (trackH - barH) * (this.scroll / this.maxScroll) + barH / 2;
+    }
+  }
+
+  /** 끌기·휠로 목록 스크롤 (상세창이 열려 있으면 안 함) */
+  private bindScroll(): void {
+    if (this.inputBound) return;
+    this.inputBound = true;
+    this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      this.dragMoved = false;
+      if (this.detail || p.y < this.listArea.top || p.y > this.listArea.bottom) return;
+      this.drag = { y: p.y, scroll: this.scroll };
+    });
+    this.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (!this.drag || !p.isDown) return;
+      const dy = p.y - this.drag.y;
+      if (Math.abs(dy) > 10) this.dragMoved = true;
+      if (this.dragMoved) this.setScroll(this.drag.scroll - dy);
+    });
+    this.input.on('pointerup', () => {
+      this.drag = null;
+    });
+    this.input.on('wheel', (_p: unknown, _o: unknown, _dx: number, dy: number) => {
+      if (!this.detail) this.setScroll(this.scroll + dy);
+    });
+    this.events.once('shutdown', () => {
+      this.input.removeAllListeners();
+      this.inputBound = false;
+    });
+  }
 
   constructor() {
     super('heroes');
   }
 
   protected onEnter(): void {
+    this.scroll = 0;
+    this.bindScroll();
     this.detail = null;
     this.chronPage = null;
     this.resetArmed = false;
@@ -45,6 +96,50 @@ export class HeroesScene extends Page {
 
   protected draw(): void {
     const heroes = living();
+    // ── 영웅 목록 (스크롤). 머리말 버튼이 위에 오도록 먼저 그림 ──
+    const listTop = LIST_TOP;
+    const listBottom = PAGE_BOTTOM - TAB_H - 8;
+    const cw = (W - 56 - 14) / 2;
+    const ch = 148;
+    const before = new Set(this.children.list);
+    heroes.forEach((h, i) => {
+      const x = 28 + (i % 2) * (cw + 14);
+      const y = listTop + Math.floor(i / 2) * (ch + 12);
+      const slot = game.data.formation.indexOf(h.id);
+      const note = slot >= 0 && h.status === 'ready' ? { text: `${ROW_LABEL[slotPosition(game.data.formationType, slot).row]} 배치`, color: C.goldStr } : statusLine(h);
+      heroCard(this, x, y, cw, ch, h, {
+        note,
+        onTap: () => {
+          // 끌어서 스크롤한 경우나, 목록 영역 밖(머리말 아래로 가려진 부분)을 누른 경우는 무시
+          const py = this.input.activePointer.y;
+          if (this.dragMoved || py < listTop || py > listBottom) return;
+          this.detail = h.id;
+          this.chronPage = null;
+          this.arming = false;
+          this.requestRender();
+        },
+      });
+    });
+    const list = this.add.container(0, 0, this.children.list.filter((o) => !before.has(o)));
+    const contentH = Math.ceil(heroes.length / 2) * (ch + 12);
+    this.maxScroll = Math.max(0, contentH - (listBottom - listTop));
+    this.scroll = Phaser.Math.Clamp(this.scroll, 0, this.maxScroll);
+    list.y = -this.scroll;
+    const maskG = this.make.graphics({}, false).fillStyle(0xffffff).fillRect(0, listTop - 6, W, listBottom - listTop + 6);
+    list.setMask(maskG.createGeometryMask());
+    this.list = list;
+    this.listArea = { top: listTop, bottom: listBottom };
+    // 스크롤 막대
+    if (this.maxScroll > 0) {
+      const trackH = listBottom - listTop;
+      const barH = Math.max(40, (trackH * trackH) / contentH);
+      this.bar = this.add.rectangle(W - 8, listTop + (trackH - barH) * (this.scroll / this.maxScroll) + barH / 2, 6, barH, C.gold, 0.5);
+      this.barInfo = { trackH, barH };
+    } else this.bar = null;
+    if (heroes.length === 0) {
+      this.add.text(W / 2, 520, '살아남은 영웅이 없습니다.\n모집으로 새 영웅을 받으세요.', textStyle(22, C.dim, { align: 'center', lineSpacing: 10 })).setOrigin(0.5);
+    }
+
     this.add.text(32, PAGE_TOP + 52, '영웅', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
     this.add.text(150, PAGE_TOP + 58, `${heroes.length} / ${rosterCap()}명 · 모집은 기지의 모집소`, textStyle(22, C.dim)).setOrigin(0, 0.5);
 
@@ -95,27 +190,6 @@ export class HeroesScene extends Page {
       this.requestRender();
     }, { fill: C.panelHi, textColor: this.resetArmed ? C.redStr : C.dim, size: 18 });
     if (this.flash) this.add.text(W - 28, PAGE_TOP + 92, this.flash, textStyle(18, C.greenStr)).setOrigin(1, 0.5);
-
-    const cw = (W - 56 - 14) / 2;
-    const ch = 148;
-    heroes.forEach((h, i) => {
-      const x = 28 + (i % 2) * (cw + 14);
-      const y = 196 + Math.floor(i / 2) * (ch + 12);
-      const slot = game.data.formation.indexOf(h.id);
-      const note = slot >= 0 && h.status === 'ready' ? { text: `${ROW_LABEL[slotPosition(game.data.formationType, slot).row]} 배치`, color: C.goldStr } : statusLine(h);
-      heroCard(this, x, y, cw, ch, h, {
-        note,
-        onTap: () => {
-          this.detail = h.id;
-          this.chronPage = null;
-          this.arming = false;
-          this.requestRender();
-        },
-      });
-    });
-    if (heroes.length === 0) {
-      this.add.text(W / 2, 520, '살아남은 영웅이 없습니다.\n모집으로 새 영웅을 받으세요.', textStyle(22, C.dim, { align: 'center', lineSpacing: 10 })).setOrigin(0.5);
-    }
 
     const d = this.detail ? heroes.find((h) => h.id === this.detail) : undefined;
     if (d) this.layer(100, () => this.drawDetail(d));

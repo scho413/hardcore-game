@@ -126,9 +126,9 @@ export function towerBg(floor: number): string {
   return `bg-${zone}`;
 }
 
-/** 기지 배경: 숙소 Lv1~3 / 4~6 / 7 이상 */
-export function baseBg(dormLv: number): string {
-  return `bg-bg-castle_${dormLv <= 3 ? 1 : dormLv <= 6 ? 2 : 3}`;
+/** 기지 배경: 모든 시설 중 가장 낮은 레벨 기준. 전부 Lv4 이상이면 2단계, 전부 Lv7 이상이면 3단계 */
+export function baseBg(minLv: number): string {
+  return `bg-bg-castle_${minLv <= 3 ? 1 : minLv <= 6 ? 2 : 3}`;
 }
 
 /** 배경을 영역에 꽉 차게 (넘치는 쪽은 잘림). 배율을 돌려줌 */

@@ -50,6 +50,8 @@ export interface SaveData {
   formationType: FormationId;
   /** 클리어한 최고 층 */
   cleared: number;
+  /** 프로필 이름 (기지 왼쪽 위). 없으면 '영주' */
+  playerName?: string;
   /** 한 번이라도 도전한 층 (정찰 정보 공개) */
   known: number[];
   attempts: number;
