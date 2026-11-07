@@ -37,7 +37,7 @@ const TIER_FILE = ['', 'common', 'fine', 'superior'];
 
 /** 몬스터 크기 (전투에서 예전 16px 도트 대비). 그림이 모두 칸을 꽉 채우므로 덩치는 여기서 */
 const MON_SIZE: Partial<Record<MonsterId, number>> = {
-  goblin: 1.15, goblin_archer: 1.15, goblin_shaman: 1.15, wolf_rider: 1.35, hobgoblin: 1.35, goblin_chief: 1.25, goblin_king: 1,
+  goblin: 1.15, goblin_bomber: 1.15, goblin_archer: 1.15, goblin_shaman: 1.15, wolf_rider: 1.35, hobgoblin: 1.35, goblin_chief: 1.25, goblin_king: 1,
   orc: 1.4, orc_hunter: 1.35, orc_shaman: 1.35, orc_berserker: 1.4, orc_warchief: 1.2, orc_warlord: 1.05,
   spider: 1.1, spiderling: 0.8, egg_sac: 1, giant_spider: 1.35, web_weaver: 1.3, broodmother: 1.15, spider_queen: 1.1,
   bandit: 1.3, assassin: 1.3, crossbowman: 1.3, mercenary: 1.35, battle_mage: 1.3, guild_lieutenant: 1.15, guild_master: 1.05,
@@ -61,6 +61,7 @@ export function loadArt(scene: Phaser.Scene): void {
   for (const [name, url] of urls('bgs')) scene.load.image(`bg-${name}`, url);
   for (const [name, url] of urls('weapons')) scene.load.image(`wraw-${name.replace(/_1$/, '')}`, url);
   for (const [name, url] of urls('consumables')) scene.load.image(`pot-${name}`, url);
+  for (const [name, url] of urls('ui')) scene.load.image(name, url); // advisor 등
 }
 
 /** BootScene.create에서: 로드한 몬스터 그림에 크기 정보 */
@@ -165,4 +166,40 @@ export function hdWeaponIcon(scene: Phaser.Scene, cls: ClassId, tier: Tier, grad
 export function unitFit(scene: Phaser.Scene, id: string, old: number, hd: number): number {
   const s = fitScale(scene, `unit-${id}`, hd);
   return s === hd ? old : s;
+}
+
+/**
+ * 그린 그림을 화면에 나올 크기(px)로 미리 줄인 텍스처.
+ * 256px 도트를 실행 중에 0.69배 같은 애매한 배율로 줄이면 픽셀이 뭉개지거나 들쭉날쭉해 보여서,
+ * 한 번만 고품질로 줄여 두고 그 텍스처를 1:1로 그림
+ */
+export function resampled(scene: Phaser.Scene, key: string, w: number): string {
+  const rkey = `${key}@${w}`;
+  if (scene.textures.exists(rkey)) return rkey;
+  const src = scene.textures.get(key).getSourceImage() as HTMLImageElement;
+  const h = Math.round((src.height * w) / src.width);
+  // 반씩 여러 번 줄이면 한 번에 줄이는 것보다 깨끗함
+  let cur: CanvasImageSource = src;
+  let cw = src.width;
+  let ch = src.height;
+  while (cw / 2 >= w) {
+    const c = document.createElement('canvas');
+    c.width = Math.round(cw / 2);
+    c.height = Math.round(ch / 2);
+    const x = c.getContext('2d')!;
+    x.imageSmoothingEnabled = true;
+    x.imageSmoothingQuality = 'high';
+    x.drawImage(cur, 0, 0, c.width, c.height);
+    cur = c;
+    cw = c.width;
+    ch = c.height;
+  }
+  const tex = scene.textures.createCanvas(rkey, w, h);
+  if (!tex) return key;
+  const ctx = tex.getContext();
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(cur, 0, 0, w, h);
+  tex.refresh();
+  return rkey;
 }

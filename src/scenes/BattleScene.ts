@@ -13,9 +13,9 @@ import { fmtTime } from '../ui/heroUi';
 import { FAMILIES, type Family } from '../data/races';
 import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { CodexScene } from './CodexScene';
-import { drawDialog, guideHero, resolveSpeaker, tutActive, tutDone, tutIs, tutSkip, type Rect } from '../tutorial/overlay';
+import { drawDialog, guideFace, resolveSpeaker, tutActive, tutDone, tutIs, tutSkip, type Rect } from '../tutorial/overlay';
 import { GUIDE_NAME, STEPS, TIPS, stepIndex } from '../tutorial/steps';
-import { drawCover, towerBg, unitScale } from '../art/hd';
+import { drawCover, resampled, towerBg, unitScale } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -38,8 +38,11 @@ const SPEEDS = [1, 2, 3];
 const SPEED_KEY = 'hardcore-game/speed';
 
 // 화면 배치: 위쪽 적, 아래쪽 아군 (GDD 4)
-const ENEMY_Y = { back: 300, front: 490 } as const;
-const ALLY_Y = { front: 770, mid: 925, back: 1080 } as const;
+/** 발 위치: 배경 영역(머리말 아래 ~ 기록 줄 위) 높이의 비율. 적은 안쪽 바닥, 영웅은 앞쪽 바닥 */
+const ENEMY_FEET = { back: 0.53, front: 0.63 } as const;
+const ALLY_FEET = { front: 0.78, mid: 0.875, back: 0.97 } as const;
+const FIELD_TOP = TOP + 110;
+const FIELD_H = BOTTOM - 100 - FIELD_TOP;
 
 function spread(n: number): number[] {
   if (n === 1) return [W / 2];
@@ -313,7 +316,7 @@ export class BattleScene extends Phaser.Scene {
       await this.wait(r.hits.length > 1 ? 130 : 60);
     }
     await this.tween({ targets: actor.root, x: actor.homeX, y: actor.homeY, duration: 210, ease: 'Quad.easeOut' });
-    actor.root.setDepth(0);
+    actor.root.setDepth(actor.root.getData('depth') ?? 0);
   }
 
   /** 전체 근접 공격 (지진 등): 점프 후 내려찍기 */
@@ -454,7 +457,7 @@ export class BattleScene extends Phaser.Scene {
   }
 
   private async banner(s: string, color: string, hold: number, size = 55): Promise<void> {
-    const y = 640;
+    const y = FIELD_TOP + FIELD_H * 0.3; // 적·영웅을 가리지 않게 위쪽 벽 높이에
     const bg = this.add.rectangle(W / 2, y, W, size + 40, 0x0b0910, 0.75).setDepth(40).setScale(1, 0);
     const t = this.add.text(W / 2, y, s, textStyle(size, color, { stroke: '#0b0910', strokeThickness: 8 })).setOrigin(0.5).setDepth(41).setAlpha(0);
     this.tweens.add({ targets: bg, scaleY: 1, duration: 120 });
@@ -471,7 +474,7 @@ export class BattleScene extends Phaser.Scene {
       drawCover(this, towerBg(this.floor), 0, TOP + 110, W, BOTTOM - 100 - TOP - 110, 0.35);
       const shadeG = this.add.graphics();
       shadeG.fillStyle(0x0b0910, 0.28).fillRect(0, TOP + 110, W, BOTTOM - 100 - TOP - 110);
-      shadeG.fillGradientStyle(0x0b0910, 0x0b0910, 0x0b0910, 0x0b0910, 0, 0, 0.45, 0.45).fillRect(0, 640, W, BOTTOM - 100 - 640);
+      shadeG.fillGradientStyle(0x0b0910, 0x0b0910, 0x0b0910, 0x0b0910, 0, 0, 0.4, 0.4).fillRect(0, FIELD_TOP + FIELD_H * 0.7, W, FIELD_H * 0.3);
       shadeG.fillStyle(0x0b0910, 1).fillRect(0, BOTTOM - 100, W, 100);
       return;
     }
@@ -530,24 +533,31 @@ export class BattleScene extends Phaser.Scene {
 
   private createView(u: Unit): void {
     let x: number;
-    let y: number;
+    let feet: number;
     if (u.side === 'enemy') {
       x = this.enemyX(u);
-      y = ENEMY_Y[u.row as 'front' | 'back'];
+      feet = ENEMY_FEET[u.row as 'front' | 'back'];
     } else {
       const sameRow = this.battle.units.filter((o) => o.side === 'ally' && o.row === u.row).length;
       x = (sameRow === 2 ? [230, 490] : spread(sameRow))[u.slot];
-      y = ALLY_Y[u.row];
+      feet = ALLY_FEET[u.row];
     }
     const isHero = !!u.texture?.startsWith('hero-');
     const key = u.texture ?? `unit-${u.kind}`;
     const base = isHero ? 3 : u.boss === 'main' ? 10 : u.boss === 'mid' ? 9 : 5;
-    const scale = isHero ? base : unitScale(this, u.kind, base) * (this.textures.get(key).getSourceImage().width > 64 ? 1.25 : 1);
+    // 그린 그림은 조금 크게, 뒷줄 적은 원근감으로 조금 작게
+    const hd = this.textures.get(key).getSourceImage().width > 64;
+    const far = u.side === 'enemy' && u.row === 'back' ? 0.9 : 1;
+    const scale = isHero ? base : unitScale(this, u.kind, base) * (hd ? 1.25 : 1) * far;
     const size = this.textures.get(key).getSourceImage().height * scale;
+    const y = FIELD_TOP + FIELD_H * feet - size / 2;
     const barW = u.boss ? 220 : 116;
 
     const shadow = this.add.ellipse(0, size / 2 - 4, size * 0.7, size * 0.16, 0x000000, 0.35);
-    const sprite = this.add.image(0, 0, key).setScale(scale);
+    // 그린 그림은 화면 크기로 미리 줄여 둔 텍스처를 1:1로 (뭉개짐 방지)
+    const tex = hd ? resampled(this, key, Math.round(this.textures.get(key).getSourceImage().width * scale)) : key;
+    const sScale = hd ? 1 : scale;
+    const sprite = this.add.image(0, 0, tex).setScale(sScale);
     if (u.rare) sprite.setTint(0xffd25a);
     const nameY = -size / 2 - 18;
     const label = u.side === 'ally' ? `${u.name} Lv${u.level}` : u.name;
@@ -558,14 +568,14 @@ export class BattleScene extends Phaser.Scene {
     const gauge = this.add.graphics();
     const taunt = this.add.text(0, nameY - 26, '도발', textStyle(18, '#9fd0ff', { stroke: '#14111c', strokeThickness: 4 })).setOrigin(0.5).setVisible(false);
 
-    const root = this.add.container(x, y, [shadow, sprite, name, dot, hp, gauge, taunt]);
+    const root = this.add.container(x, y, [shadow, sprite, name, dot, hp, gauge, taunt]).setDepth(feet * 10).setData('depth', feet * 10);
     const v: View = { unit: u, root, sprite, hp, gauge, name, taunt, homeX: x, homeY: y, size, barW, shownHp: u.hp };
     this.views.set(u.id, v);
     this.drawHp(v, u.hp);
     this.drawGauge(v);
 
     // 대기 모션
-    this.tweens.add({ targets: sprite, scaleY: scale * 1.04, duration: 520 + Math.random() * 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: Math.random() * 400 });
+    this.tweens.add({ targets: sprite, scaleY: sScale * 1.04, duration: 520 + Math.random() * 200, yoyo: true, repeat: -1, ease: 'Sine.easeInOut', delay: Math.random() * 400 });
   }
 
   private drawHp(v: View, hpVal: number): void {
@@ -772,13 +782,11 @@ export class BattleScene extends Phaser.Scene {
   private tipDialog(id: string, text: string): Promise<void> {
     const d = game.data;
     if ((d.tips ?? []).includes(id)) return Promise.resolve();
-    const g = guideHero();
-    ensureHeroTextures(this, g);
-    return new Promise((res) => {
+        return new Promise((res) => {
       const before = new Set(this.children.list);
       drawDialog(this, {
         name: GUIDE_NAME,
-        face: `face-${g.id}`,
+        face: guideFace(this),
         text,
         mode: 'tap',
         top: TOP,
