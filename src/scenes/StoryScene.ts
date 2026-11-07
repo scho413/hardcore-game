@@ -87,10 +87,15 @@ export class StoryScene extends Phaser.Scene {
       sword.fillStyle(0x6a4030, 1).fillRect(W / 2 - 22, cy - 66, 44, 8).fillRect(W / 2 - 4, cy - 58, 8, 30);
       sword.setAngle(12);
     } else {
-      const gh = guideHero();
-      ensureHeroTextures(this, gh);
       g.fillStyle(0x221c2e, 1).fillCircle(W / 2, cy - 30, 170);
-      this.add.image(W / 2, cy - 30, `hero-${gh.id}`).setScale(8);
+      if (this.textures.exists('advisor')) {
+        const a = this.add.image(W / 2, cy - 30, 'advisor').setScale(280 / 256);
+        this.tweens.add({ targets: a, y: cy - 42, yoyo: true, repeat: -1, duration: 900, ease: 'Sine.easeInOut' });
+      } else {
+        const gh = guideHero();
+        ensureHeroTextures(this, gh);
+        this.add.image(W / 2, cy - 30, `hero-${gh.id}`).setScale(8);
+      }
       this.add.text(W / 2, cy + 160, GUIDE_NAME, textStyle(33, C.goldStr)).setOrigin(0.5);
     }
 

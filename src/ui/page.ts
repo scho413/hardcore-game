@@ -1,9 +1,8 @@
 import Phaser from 'phaser';
 import { fatigueNow } from '../data/heroes';
 import { game, refresh, save } from '../state';
-import { drawDialog, resolveSpeaker, tutDone, tutSkip, tutStep, guideHero, type Rect } from '../tutorial/overlay';
+import { drawDialog, resolveSpeaker, tutDone, tutSkip, tutStep, guideFace, type Rect } from '../tutorial/overlay';
 import { GUIDE_NAME } from '../tutorial/steps';
-import { ensureHeroTextures } from '../art/textures';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from './theme';
 
 export type TabKey = 'base' | 'heroes' | 'tower' | 'dungeon' | 'codex';
@@ -113,11 +112,9 @@ export abstract class Page extends Phaser.Scene {
     }
     if (this.pendingTip) {
       const tp = this.pendingTip;
-      const g = guideHero();
-      ensureHeroTextures(this, g);
-      drawDialog(this, {
+            drawDialog(this, {
         name: GUIDE_NAME,
-        face: `face-${g.id}`,
+        face: guideFace(this),
         text: tp.text,
         mode: 'tap',
         top,

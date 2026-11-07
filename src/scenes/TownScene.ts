@@ -1,7 +1,6 @@
 import { josa } from '../ui/josa';
-import Phaser from 'phaser';
 import { buildingTexture } from '../art/buildings';
-import { baseBg, buildingKey, drawCover, potionKey } from '../art/hd';
+import { baseBg, buildingKey, drawCover, potionKey, resampled } from '../art/hd';
 import { matIcon } from '../art/itemArt';
 import {
   ALCHEMY_UNLOCK,
@@ -54,8 +53,6 @@ const PLOTS: Record<FacilityId, [number, number]> = {
 };
 /** 건물 그림이 차지하는 폭 (px) */
 const BLD_W = 176;
-/** 그린 건물(256px)은 BLD_W에, 도트 건물은 예전 배율로 */
-const fitBld = (_scene: Phaser.Scene, key: string) => (key.startsWith('bld-') ? BLD_W / 256 : 4.6);
 
 const fmtLong = (ms: number) => {
   const s = Math.max(0, Math.ceil(ms / 1000));
@@ -89,11 +86,12 @@ export class TownScene extends Page {
     const top = PAGE_TOP + 96;
     const bottom = PAGE_BOTTOM - TAB_H;
     const bg = drawCover(this, baseBg(d.facilities.dorm), 0, PAGE_TOP, W, bottom - PAGE_TOP, 0);
-    // 그림 속 광장 (424×632 기준 212, 355)과 지평선 (205)
-    const s = bg?.s ?? 1.86;
-    const cx0 = bg ? bg.ox + 212 * s : W / 2;
-    const cy0 = bg ? bg.oy + 355 * s : (top + bottom) / 2;
-    this.drawHill(bg ? bg.oy + 205 * s : top + 120);
+    // 그림 속 광장 (가로 50%, 세로 56.2%)과 지평선 (32.4%). 그림 크기가 바뀌어도 비율로
+    const bw = bg ? bg.img.width * bg.s : W;
+    const bh = bg ? bg.img.height * bg.s : bottom - top;
+    const cx0 = bg ? bg.ox + bw * 0.5 : W / 2;
+    const cy0 = bg ? bg.oy + bh * (355 / 632) : (top + bottom) / 2;
+    this.drawHill(bg ? bg.oy + bh * (205 / 632) : top + 120);
 
     // ── 머리말 ──
     this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
@@ -113,12 +111,12 @@ export class TownScene extends Page {
       const def = FACILITIES[id];
       const unlocked = d.test || lv > 0 || d.cleared >= def.unlock;
       const key = (build && lv === 0 ? buildingKey(this, 'scaffold') : buildingKey(this, lv > 0 ? id : 'lot', lv)) ?? buildingTexture(this, lv > 0 ? id : 'lot');
-      const img = this.add.image(cx, by, key).setOrigin(0.5, 0.94).setScale(fitBld(this, key));
+      const img = key.startsWith('bld-') ? this.add.image(Math.round(cx), Math.round(by), resampled(this, key, BLD_W)).setOrigin(0.5, 0.94) : this.add.image(cx, by, key).setOrigin(0.5, 0.94).setScale(4.6);
       if (!unlocked) img.setTint(0x6a6a7a).setAlpha(0.6);
       if (build && lv > 0) {
         // 업그레이드 중: 옆에 작은 비계
         const sk = buildingKey(this, 'scaffold');
-        if (sk) this.add.image(cx + BLD_W * 0.32, by + 4, sk).setOrigin(0.5, 0.94).setScale((BLD_W * 0.45) / 256);
+        if (sk) this.add.image(Math.round(cx + BLD_W * 0.32), Math.round(by + 4), resampled(this, sk, Math.round(BLD_W * 0.45))).setOrigin(0.5, 0.94);
       }
       labels.push(() => {
         const label = lv > 0 ? `${def.name} Lv${lv}` : def.name;
@@ -218,7 +216,8 @@ export class TownScene extends Page {
     const def = FACILITIES[id];
     const lv = d.facilities[id];
     const pk = buildingKey(this, lv > 0 ? id : 'lot', lv) ?? buildingTexture(this, lv > 0 ? id : 'lot');
-    this.add.image(x + 90, y + 170, pk).setOrigin(0.5, 0.94).setScale(pk.startsWith('bld-') ? 150 / 256 : 4);
+    if (pk.startsWith('bld-')) this.add.image(x + 90, y + 170, resampled(this, pk, 150)).setOrigin(0.5, 0.94);
+    else this.add.image(x + 90, y + 170, pk).setOrigin(0.5, 0.94).setScale(4);
     this.add.text(x + 180, y + 24, def.name, textStyle(44, C.goldStr));
     this.add.text(x + 180, y + 82, lv > 0 ? `Lv ${lv} / ${FACILITY_MAX}` : '아직 짓지 않음', textStyle(22, C.dim));
     this.add.text(x + 180, y + 114, def.desc, textStyle(18, C.dim, { wordWrap: { width: w - 200 } }));

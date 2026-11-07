@@ -54,6 +54,14 @@ export function guideHero(): Hero {
   return guide;
 }
 
+/** 기록관 얼굴: 그린 그림(art/ui/advisor.png)이 있으면 그것, 없으면 도트 영웅 */
+export function guideFace(scene: Phaser.Scene): string {
+  if (scene.textures.exists('advisor')) return 'advisor';
+  const g = guideHero();
+  ensureHeroTextures(scene, g);
+  return `face-${g.id}`;
+}
+
 /** 말하는 사람의 이름·얼굴·대사 */
 export function resolveSpeaker(scene: Phaser.Scene, step: TutStep): { name: string; face: string; text: string } {
   const d = game.data;
@@ -65,9 +73,7 @@ export function resolveSpeaker(scene: Phaser.Scene, step: TutStep): { name: stri
     ensureHeroTextures(scene, hero);
     return { name: hero.name, face: `face-${hero.id}`, text: step.text || GREETING[hero.classId](hero.name) };
   }
-  const g = guideHero();
-  ensureHeroTextures(scene, g);
-  return { name: GUIDE_NAME, face: `face-${g.id}`, text: step.text };
+  return { name: GUIDE_NAME, face: guideFace(scene), text: step.text };
 }
 
 /**
@@ -140,7 +146,10 @@ export function drawDialog(
   g.fillStyle(0x1b1626, 0.97).fillRoundedRect(bx, by, bw, bh, 14);
   g.lineStyle(4, C.gold, 1).strokeRoundedRect(bx, by, bw, bh, 14);
   g.fillStyle(C.bgDeep, 1).fillRoundedRect(bx + 18, by + 50, 120, 120, 10);
-  if (o.face) scene.add.image(bx + 78, by + 110, o.face).setScale(5).setDepth(DEPTH + 5);
+  if (o.face) {
+    const fw = scene.textures.get(o.face).getSourceImage().width;
+    scene.add.image(bx + 78, by + 110, o.face).setScale(fw > 64 ? 112 / fw : 5).setDepth(DEPTH + 5);
+  }
   scene.add.text(bx + 24, by + 14, o.name, textStyle(22, C.goldStr)).setDepth(DEPTH + 5);
   scene.add.text(bx + 156, by + 54, o.text, textStyle(22, C.text, { wordWrap: { width: bw - 180 }, lineSpacing: 8 })).setDepth(DEPTH + 5);
   scene.add
