@@ -1,6 +1,6 @@
 import { josa } from '../ui/josa';
 import { buildingTexture } from '../art/buildings';
-import { baseBg, buildingKey, drawCover, potionKey, resampled } from '../art/hd';
+import { baseBg, buildingKey, drawCover, fitScale, goldIcon, potionKey, resampled } from '../art/hd';
 import { matIcon } from '../art/itemArt';
 import {
   ALCHEMY_UNLOCK,
@@ -95,7 +95,7 @@ export class TownScene extends Page {
 
     // ── 머리말 ──
     this.add.text(32, PAGE_TOP + 52, '기지', textStyle(55, C.goldStr)).setOrigin(0, 0.5);
-    this.add.text(W - 28, PAGE_TOP + 40, `골드 ${d.gold}`, textStyle(26, C.goldStr)).setOrigin(1, 0.5);
+    goldIcon(this, this.add.text(W - 28, PAGE_TOP + 40, `${d.gold}`, textStyle(26, C.goldStr)).setOrigin(1, 0.5), 30);
     const builds = d.builds.length;
     this.add.text(W - 28, PAGE_TOP + 74, `건설 ${builds}/${buildSlots(d)}${d.test ? ' · 테스트' : ''}`, textStyle(18, builds >= buildSlots(d) ? C.redStr : C.dim)).setOrigin(1, 0.5);
 
@@ -257,7 +257,7 @@ export class TownScene extends Page {
       if (!tutorialFree)
         for (const [k, n] of Object.entries(cost.mats) as [MaterialId, number][]) {
           const have = d.materials[k] ?? 0;
-          this.add.image(mx + 12, cy + 46, matIcon(this, k)).setScale(2);
+          this.add.image(mx + 12, cy + 46, matIcon(this, k)).setScale(fitScale(this, matIcon(this, k), 2));
           const t = this.add.text(mx + 28, cy + 46, `${MATERIALS[k].name} ${have}/${n}`, textStyle(18, have >= n ? '#8fe0a0' : C.redStr)).setOrigin(0, 0.5);
           mx += t.width + 50;
         }
@@ -401,9 +401,11 @@ export class TownScene extends Page {
       const tx = pk ? x + 104 : x + 24;
       if (pk) this.add.image(x + 54, ry + 40, pk).setScale(84 / 256);
       this.add.text(tx, ry, `${p.name}  보유 ${have}`, textStyle(22));
-      this.add.text(tx, ry + 30, p.desc, textStyle(18, C.dim));
+      // 버튼(다음 전투·제조)과 겹치지 않게 줄바꿈
+      const btnLeft = x + w - (pid === 'might' || pid === 'guard' || pid === 'antidote' ? 316 : 166);
+      const desc = this.add.text(tx, ry + 30, p.desc, textStyle(18, C.dim, { wordWrap: { width: btnLeft - tx } }));
       const need = [...(Object.entries(p.mats) as [MaterialId, number][]).map(([k, v]) => ({ id: k, n: v }))];
-      this.add.text(tx, ry + 56, `골드 ${p.gold} · ${need.map((r) => `${MATERIALS[r.id].name} ${r.n}`).join(', ')}`, textStyle(18, C.faint));
+      this.add.text(tx, desc.y + desc.height + 2, `골드 ${p.gold} · ${need.map((r) => `${MATERIALS[r.id].name} ${r.n}`).join(', ')}`, textStyle(18, C.faint));
       const can = d.gold >= p.gold && hasMats(d.materials, need);
       const bb = button(this, x + w - 90, ry + 30, 140, 56, '제조', () => {
         d.gold -= p.gold;

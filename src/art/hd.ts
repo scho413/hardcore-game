@@ -25,7 +25,13 @@ function urls(folder: string): Map<string, string> {
 const MON_ALIAS: Record<string, MonsterId> = { goblin_hob: 'hobgoblin', goblin_wolf_rider: 'wolf_rider' };
 const BLD_ALIAS: Record<string, FacilityId> = { smith: 'smithy' };
 /** 물약 그림 → 게임 물약 (힘·수호의 영약은 아직 그림 없음) */
-const POTION_FILE: Partial<Record<PotionId, string>> = { stamina: 'potion_stimulant', cure: 'potion_panacea', antidote: 'potion_antidote' };
+const POTION_FILE: Partial<Record<PotionId, string>> = {
+  stamina: 'potion_stimulant',
+  cure: 'potion_panacea',
+  might: 'potion_strengh',
+  guard: 'potion_guardian',
+  antidote: 'potion_antidote',
+};
 const WEAPON_FILE: Record<ClassId, string[]> = {
   knight: ['knight_shield', 'knight_sword'],
   warrior: ['warrior_axe'],
@@ -62,6 +68,7 @@ export function loadArt(scene: Phaser.Scene): void {
   for (const [name, url] of urls('weapons')) scene.load.image(`wraw-${name.replace(/_1$/, '')}`, url);
   for (const [name, url] of urls('consumables')) scene.load.image(`pot-${name}`, url);
   for (const [name, url] of urls('ui')) scene.load.image(name, url); // advisor 등
+  for (const [name, url] of urls('materials')) scene.load.image(`mat-${name}`, url); // metal1 … crystal3, gold
 }
 
 /** BootScene.create에서: 로드한 몬스터 그림에 크기 정보 */
@@ -92,6 +99,26 @@ export function unitScale(scene: Phaser.Scene, id: string, scale: number): numbe
 
 // ─── 배경 ───
 /** 탑 층 배경: 보스 층은 보스 방, 나머지는 구간 배경 */
+/** 골드 아이콘을 글자 왼쪽에 (그림이 있을 때만) */
+export function goldIcon(scene: Phaser.Scene, text: Phaser.GameObjects.Text, size = 30): void {
+  if (!scene.textures.exists('mat-gold')) return;
+  const left = text.x - text.displayWidth * text.originX;
+  scene.add.image(left - size / 2 - 6, text.y + text.displayHeight * (0.5 - text.originY), 'mat-gold').setDisplaySize(size, size).setDepth(text.depth);
+}
+
+/** 던전 배경 */
+export function dungeonBg(id: string): string {
+  return `bg-dungeon_${id}`;
+}
+
+/** 재료 아이콘 (그린 그림이 있으면). logical = 예전 도트 아이콘 폭 */
+export function hdMatIcon(scene: Phaser.Scene, id: string, logical: number): string | null {
+  const key = `mat-${id}`;
+  if (!scene.textures.exists(key)) return null;
+  setLogical(scene, key, logical);
+  return key;
+}
+
 export function towerBg(floor: number): string {
   const boss: Record<number, string> = { 10: 'goblin_king', 20: 'orc_warlord', 30: 'spider_queen', 40: 'thieves_guild-master', 50: 'tower_lord' };
   if (boss[floor]) return `bg-${boss[floor]}`;

@@ -15,7 +15,7 @@ import { BASE_H, BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
 import { CodexScene } from './CodexScene';
 import { drawDialog, guideFace, resolveSpeaker, tutActive, tutDone, tutIs, tutSkip, type Rect } from '../tutorial/overlay';
 import { GUIDE_NAME, STEPS, TIPS, stepIndex } from '../tutorial/steps';
-import { drawCover, resampled, towerBg, unitScale } from '../art/hd';
+import { drawCover, dungeonBg, resampled, towerBg, unitScale } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 interface View {
@@ -470,8 +470,9 @@ export class BattleScene extends Phaser.Scene {
 
   private drawBackground(): void {
     // 탑: 그린 배경 (구간·보스 방). 영웅·이름이 잘 보이게 살짝 어둡게
-    if (!this.dungeon && this.textures.exists(towerBg(this.floor))) {
-      drawCover(this, towerBg(this.floor), 0, TOP + 110, W, BOTTOM - 100 - TOP - 110, 0.35);
+    const bgKey = this.dungeon ? dungeonBg(this.dungeon) : towerBg(this.floor);
+    if (this.textures.exists(bgKey)) {
+      drawCover(this, bgKey, 0, TOP + 110, W, BOTTOM - 100 - TOP - 110, 0.35);
       const shadeG = this.add.graphics();
       shadeG.fillStyle(0x0b0910, 0.28).fillRect(0, TOP + 110, W, BOTTOM - 100 - TOP - 110);
       shadeG.fillGradientStyle(0x0b0910, 0x0b0910, 0x0b0910, 0x0b0910, 0, 0, 0.4, 0.4).fillRect(0, FIELD_TOP + FIELD_H * 0.7, W, FIELD_H * 0.3);

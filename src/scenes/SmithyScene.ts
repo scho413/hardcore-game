@@ -25,7 +25,7 @@ import { SMITHY_MAX_DIFF, dismantleGold } from '../data/base';
 import { game, living, save } from '../state';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
-import { fitScale } from '../art/hd';
+import { fitScale, goldIcon } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 const CLASS_ORDER: ClassId[] = ['knight', 'warrior', 'archer', 'mage', 'priest'];
@@ -47,7 +47,7 @@ export class SmithyScene extends Page {
     button(this, 70, PAGE_TOP + 52, 100, 56, '◀ 기지', () => this.go('base'), { fill: C.panelHi, textColor: C.text, size: 18 });
     this.add.text(136, PAGE_TOP + 52, '대장간', textStyle(44, C.goldStr)).setOrigin(0, 0.5);
     this.add.text(290, PAGE_TOP + 58, `Lv ${d.facilities.smithy}`, textStyle(22, C.dim)).setOrigin(0, 0.5);
-    this.add.text(W - 28, PAGE_TOP + 58, `골드 ${d.gold}`, textStyle(22, C.goldStr)).setOrigin(1, 0.5);
+    goldIcon(this, this.add.text(W - 28, PAGE_TOP + 58, `${d.gold}`, textStyle(22, C.goldStr)).setOrigin(1, 0.5), 26);
     const maxDiff = d.test ? 5 : SMITHY_MAX_DIFF[Math.max(1, d.facilities.smithy) - 1];
     if (SmithyScene.diff > maxDiff) SmithyScene.diff = maxDiff as Difficulty;
 
@@ -64,7 +64,7 @@ export class SmithyScene extends Page {
         const id = matId(k, t);
         const n = d.materials[id] ?? 0;
         const ry = y + 48 + ti * 36;
-        this.add.image(cx + 26, ry, matIcon(this, id)).setScale(2.5).setAlpha(n > 0 ? 1 : 0.35);
+        this.add.image(cx + 26, ry, matIcon(this, id)).setScale(fitScale(this, matIcon(this, id), 2.5)).setAlpha(n > 0 ? 1 : 0.35);
         this.add.text(cx + 48, ry, MATERIALS[id].name, textStyle(18, n > 0 ? C.text : C.faint)).setOrigin(0, 0.5);
         this.add.text(cx + colW - 14, ry, `${n}`, textStyle(22, n > 0 ? C.goldStr : C.faint)).setOrigin(1, 0.5);
       });
@@ -114,7 +114,7 @@ export class SmithyScene extends Page {
     let rx = px + 124;
     for (const r of recipeFor(cls, diff)) {
       const have = d.materials[r.id] ?? 0;
-      this.add.image(rx + 14, y + 118, matIcon(this, r.id)).setScale(2.2);
+      this.add.image(rx + 14, y + 118, matIcon(this, r.id)).setScale(fitScale(this, matIcon(this, r.id), 2.2));
       const t = this.add.text(rx + 32, y + 118, `${MATERIALS[r.id].name} ${have}/${r.n}`, textStyle(18, have >= r.n ? '#8fe0a0' : C.redStr)).setOrigin(0, 0.5);
       rx += t.width + 50;
     }
@@ -211,7 +211,7 @@ export class SmithyScene extends Page {
           this.requestRender();
         }, { size: 18, fill: 0x8fd0ff });
         rb.setEnabled(can);
-        this.add.image(px + pw - 128, y + 6, matIcon(this, cost[0].id)).setScale(1.6).setDepth(5);
+        this.add.image(px + pw - 128, y + 6, matIcon(this, cost[0].id)).setScale(fitScale(this, matIcon(this, cost[0].id), 1.6)).setDepth(5);
       }
       y += rowH;
     }
