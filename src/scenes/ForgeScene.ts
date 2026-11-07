@@ -20,6 +20,7 @@ import {
 } from '../data/items';
 import { game, newId, save } from '../state';
 import { BOTTOM, C, OY, TOP, W, textStyle } from '../ui/theme';
+import { fitScale } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 type StepKind = 'heat' | 'hammer' | 'quench' | 'engrave';
@@ -116,7 +117,7 @@ export class ForgeScene extends Phaser.Scene {
 
     const def = DIFFICULTIES[this.diff];
     this.glow = this.add.graphics();
-    this.icon = this.add.image(W / 2, 360, weaponIcon(this, this.cls, def.tier, 0)).setScale(14);
+    this.icon = this.add.image(W / 2, 360, weaponIcon(this, this.cls, def.tier, 0)).setScale(fitScale(this, weaponIcon(this, this.cls, def.tier, 0), 14));
 
     this.add.text(W / 2, TOP + 60, `${CLASSES[this.cls].name} 무기 · 난이도 ${def.name}`, textStyle(22, C.dim)).setOrigin(0.5);
     this.title = this.add.text(W / 2, TOP + 120, '', textStyle(55, C.goldStr)).setOrigin(0.5);
@@ -407,8 +408,8 @@ export class ForgeScene extends Phaser.Scene {
     save();
 
     this.title.setText('완성!');
-    this.icon.setTexture(weaponIcon(this, w.cls, w.tier, w.grade)).setScale(4);
-    this.tweens.add({ targets: this.icon, scale: 16, duration: 500, ease: 'Back.easeOut' });
+    this.icon.setTexture(weaponIcon(this, w.cls, w.tier, w.grade)).setScale(fitScale(this, weaponIcon(this, w.cls, w.tier, w.grade), 4));
+    this.tweens.add({ targets: this.icon, scale: fitScale(this, this.icon.texture.key, 16), duration: 500, ease: 'Back.easeOut' });
     const gc = GRADES[grade];
     this.glow.clear().fillStyle(gc.color, 0.3).fillCircle(W / 2, 360, 170);
     if (grade >= 3) this.cameras.main.flash(300, (gc.color >> 16) & 255, (gc.color >> 8) & 255, gc.color & 255);

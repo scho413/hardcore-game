@@ -15,6 +15,7 @@ import { addFatigue, addLog, fatigueLevel } from '../data/heroes';
 import { Page } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
 import { button, panel } from '../ui/widgets';
+import { fitScale } from '../art/hd';
 import { FAMILIES } from '../data/races';
 
 const ROW_LABEL = { front: '전열', mid: '중열', back: '후열' } as const;
@@ -76,7 +77,7 @@ export class HeroesScene extends Page {
         this.requestRender();
       }, { fill: C.panelHi, textColor: C.text, size: 18 });
     }
-    button(this, W - 90, 140, 130, 64, this.resetArmed ? '한 번 더' : '처음부터', () => {
+    button(this, W - 90, 140, 130, 64, this.resetArmed ? '한 번 더' : '인트로부터', () => {
       if (!this.resetArmed) {
         this.resetArmed = true;
         this.time.delayedCall(2500, () => {
@@ -84,9 +85,12 @@ export class HeroesScene extends Page {
           this.requestRender();
         });
       } else {
+        // 저장을 지우고 이야기·튜토리얼부터 다시
         resetProgress();
         this.resetArmed = false;
-        this.flash = '새로 시작했습니다';
+        this.cameras.main.fadeOut(200, 11, 9, 16);
+        this.cameras.main.once('camerafadeoutcomplete', () => this.scene.start('story'));
+        return;
       }
       this.requestRender();
     }, { fill: C.panelHi, textColor: this.resetArmed ? C.redStr : C.dim, size: 18 });
@@ -215,7 +219,7 @@ export class HeroesScene extends Page {
     wg.fillStyle(C.bgDeep, 1).fillRoundedRect(x + 24, wy, w - 48, wh, 8);
     if (wpn) {
       wg.fillStyle(GRADES[wpn.grade].color, 1).fillRect(x + 24, wy, 6, wh);
-      this.add.image(x + 62, wy + 32, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade)).setScale(3.4).setAlpha(wpn.dur > 0 ? 1 : 0.4);
+      this.add.image(x + 62, wy + 32, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade)).setScale(fitScale(this, weaponIcon(this, wpn.cls, wpn.tier, wpn.grade), 3.4)).setAlpha(wpn.dur > 0 ? 1 : 0.4);
       this.add.text(x + 98, wy + 8, weaponName(wpn), textStyle(22, GRADES[wpn.grade].str));
       this.add.text(x + 98, wy + 36, `${weaponDesc(wpn)}`, textStyle(18, C.dim)).setCrop(0, 0, w - 270, 30);
       this.add.text(x + w - 24 - 140, wy + 8, wpn.dur > 0 ? `내구 ${wpn.dur}` : '수리 필요', textStyle(18, wpn.dur > 30 ? C.faint : C.redStr)).setOrigin(1, 0);
@@ -278,7 +282,7 @@ export class HeroesScene extends Page {
       const g = this.add.graphics();
       g.fillStyle(C.panelHi, 1).fillRoundedRect(x + 20, ry, w - 40, rowH - 10, 8);
       g.fillStyle(GRADES[wp.grade].color, 1).fillRect(x + 20, ry, 6, rowH - 10);
-      this.add.image(x + 58, ry + (rowH - 10) / 2, weaponIcon(this, wp.cls, wp.tier, wp.grade)).setScale(3.4);
+      this.add.image(x + 58, ry + (rowH - 10) / 2, weaponIcon(this, wp.cls, wp.tier, wp.grade)).setScale(fitScale(this, weaponIcon(this, wp.cls, wp.tier, wp.grade), 3.4));
       this.add.text(x + 94, ry + 8, weaponName(wp), textStyle(22, GRADES[wp.grade].str));
       this.add.text(x + 94, ry + 36, `${weaponDesc(wp)} · 내구 ${wp.dur}`, textStyle(18, C.dim)).setCrop(0, 0, w - 130, 30);
       this.add.zone(x + w / 2, ry + (rowH - 10) / 2, w - 40, rowH - 10).setInteractive({ useHandCursor: true }).on('pointerup', () => {

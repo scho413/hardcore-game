@@ -10,6 +10,7 @@ import { drawChronicle, fmtDate } from '../ui/chronicle';
 import { shade } from '../ui/heroUi';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
+import { unitFit } from '../art/hd';
 import { button, chip, panel } from '../ui/widgets';
 
 type Tab = 'monsters' | 'fallen';
@@ -93,7 +94,7 @@ export class CodexScene extends Page {
       const x = 28 + (i % cols) * (cw + 10);
       const y = top + Math.floor(i / cols) * (ch + 10);
       panel(this, x, y, cw, ch, known ? C.panel : 0x1a1622, m.boss && known ? C.red : C.line);
-      const img = this.add.image(x + cw / 2, y + 58, `unit-${id}`).setScale(m.boss ? 4.2 : 3.6);
+      const img = this.add.image(x + cw / 2, y + 58, `unit-${id}`).setScale(unitFit(this, id, m.boss ? 4.2 : 3.6, 5.8));
       if (!known) img.setTintFill(0x2a2436);
       this.add.text(x + cw / 2, y + 104, known ? m.name : '???', textStyle(18, known ? (m.boss ? C.redStr : C.text) : C.faint)).setOrigin(0.5, 0).setCrop(0, 0, cw, 30);
       if (known) this.add.text(x + cw / 2, y + 126, `처치 ${kills[id] ?? 0}`, textStyle(18, C.faint)).setOrigin(0.5, 0);
@@ -124,7 +125,7 @@ export class CodexScene extends Page {
     const h = 560;
     panel(this, x, y, w, h, C.panel, m.boss ? C.red : C.gold);
     this.add.zone(x + w / 2, y + h / 2, w, h).setInteractive();
-    this.add.image(x + 110, y + 120, `unit-${id}`).setScale(9);
+    this.add.image(x + 110, y + 120, `unit-${id}`).setScale(unitFit(this, id, 9, 11));
     this.add.text(x + 220, y + 40, m.name, textStyle(33, m.boss ? C.redStr : C.text));
     chip(this, x + 220, y + 100, FAMILIES[m.family].name, FAMILIES[m.family].color, 18);
     if (m.boss) this.add.text(x + 220 + 90, y + 100, m.boss === 'main' ? '메인보스' : '중간보스', textStyle(18, C.redStr)).setOrigin(0, 0.5);

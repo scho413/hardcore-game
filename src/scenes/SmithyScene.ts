@@ -25,6 +25,7 @@ import { SMITHY_MAX_DIFF, dismantleGold } from '../data/base';
 import { game, living, save } from '../state';
 import { Page, TAB_H } from '../ui/page';
 import { C, PAGE_BOTTOM, PAGE_TOP, W, textStyle } from '../ui/theme';
+import { fitScale } from '../art/hd';
 import { button, panel } from '../ui/widgets';
 
 const CLASS_ORDER: ClassId[] = ['knight', 'warrior', 'archer', 'mage', 'priest'];
@@ -104,7 +105,7 @@ export class SmithyScene extends Page {
     const df = DIFFICULTIES[diff];
     const ph = 214;
     panel(this, px, y, pw, ph);
-    this.add.image(px + 62, y + 66, weaponIcon(this, cls, df.tier, df.maxGrade)).setScale(6);
+    this.add.image(px + 62, y + 66, weaponIcon(this, cls, df.tier, df.maxGrade)).setScale(fitScale(this, weaponIcon(this, cls, df.tier, df.maxGrade), 6));
     this.add.text(px + 124, y + 14, `${WEAPON_TYPES[cls].name} · ${df.name}`, textStyle(26));
     const range = df.maxGrade === 0 ? '일반 고정 (자동 제작)' : `일반 ~ ${GRADES[df.maxGrade].name}`;
     this.add.text(px + 124, y + 52, range, textStyle(18, GRADES[df.maxGrade].str));
@@ -173,7 +174,7 @@ export class SmithyScene extends Page {
       const g = this.add.graphics();
       g.fillStyle(C.panel, 1).fillRoundedRect(px, y, pw, rowH - 8, 8);
       g.fillStyle(GRADES[w.grade].color, 1).fillRect(px, y, 6, rowH - 8);
-      this.add.image(px + 38, y + (rowH - 8) / 2, weaponIcon(this, w.cls, w.tier, w.grade)).setScale(3.2).setAlpha(w.dur > 0 ? 1 : 0.4);
+      this.add.image(px + 38, y + (rowH - 8) / 2, weaponIcon(this, w.cls, w.tier, w.grade)).setScale(fitScale(this, weaponIcon(this, w.cls, w.tier, w.grade), 3.2)).setAlpha(w.dur > 0 ? 1 : 0.4);
       const owner = owners.get(w.id);
       this.add.text(px + 72, y + 5, weaponName(w), textStyle(18, GRADES[w.grade].str));
       this.add.text(px + 72, y + 31, `${owner ? `${owner.name} · ` : `${CLASSES[w.cls].name} · `}${weaponDesc(w)}`, textStyle(18, C.dim)).setCrop(0, 0, pw - 250, 30);

@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { SPRITES, spriteGrid } from '../art/pixels';
 import { makeGridTexture } from '../art/textures';
+import { hdMonsters, loadArt } from '../art/hd';
 import { game } from '../state';
 import { STEPS, TUT_DONE } from '../tutorial/steps';
 
@@ -10,7 +11,12 @@ export class BootScene extends Phaser.Scene {
     super('boot');
   }
 
+  preload(): void {
+    loadArt(this);
+  }
+
   create(): void {
+    hdMonsters(this);
     for (const kind of Object.keys(SPRITES)) makeGridTexture(this, `unit-${kind}`, spriteGrid(kind));
 
     // 흰 픽셀 (파티클·이펙트용)
